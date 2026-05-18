@@ -139,7 +139,7 @@ def detect_band_with_rms(b, a, bh, ah, thesignal, numsamples, threshold=10):
  
     # Calculate the absolute value of the signal
     abs_signal = np.abs(thefilteredsignal)
-    rms_signal = np.sqrt(np.mean(np.square(thefilteredsignal)))
+    rms_signal = np.sqrt(np.std(thefilteredsignal))
 #    print("abs:  ", abs_signal[:4])
     
     # Apply a median filter to the absolute signal
@@ -154,7 +154,8 @@ def detect_band_with_rms(b, a, bh, ah, thesignal, numsamples, threshold=10):
     # Threshold the normalized difference signal to detect artifact segments
  #   artifact_mask = norm_signal > threshold
 #    thresh_use = np.max(abs_signal) / 3
-    artifact_mask = abs_signal > threshold
+    #artifact_mask = abs_signal > threshold
+    artifact_mask = abs(abs_signal - threshold) 
     saw_artifact = np.max(artifact_mask)
 #    print("abs: " + str(abs_signal) + "  thr: " + str(threshold) + "  detect:" + str(saw_artifact))
 
@@ -779,11 +780,17 @@ def detect_drowsiness(art_flags, channel_labels):
     first = (np.mean(o1) + np.mean(o2))/2
     second = (np.var(o1) + np.var(o2))/2
     #-------------------------
-    x_values = np.arange(0, len(o1), 1)
+    # NOTE: int32 dtype is intentional. The EC_191 reference database was
+    # built when np.arange defaulted to int32 on Windows (numpy <2.0).
+    # x_values**2 overflows at i>=46341, producing wrap-around values that
+    # the reference statistics depend on. numpy 2.x defaults arange to
+    # int64, which yields mathematically correct but reference-incompatible
+    # results. Forcing int32 here reproduces production behavior.
+    x_values = np.arange(0, len(o1), 1, dtype=np.int32)
     zeroth = ((np.sum(o1) + np.sum(o2))/2)/1000
     first = (((np.dot(x_values, o1) / sum(o1)) + (np.dot(x_values, o2) / sum(o2)))/2)/1000
     second = (((np.dot(x_values**2, o1) / sum(o1)) + (np.dot(x_values, o2) / sum(o2)))/2)/100000
-    return zeroth, first, second 
+    return zeroth, first, second
 
 def detect_moments(art_flags, channel_labels):
     CZ_index = channel_labels.index('CZ')
@@ -792,7 +799,11 @@ def detect_moments(art_flags, channel_labels):
     first = np.mean(cz)
     second = np.var(cz)
     #------------------------------
-    x_values = np.arange(0, len(cz), 1)
+    # NOTE: int32 dtype is intentional — see detect_drowsiness above.
+    # The EC_191 reference database was built with numpy <2.0's int32
+    # arange default. x_values**2 overflows at i>=46341 and the
+    # reference statistics depend on the wrap-around values.
+    x_values = np.arange(0, len(cz), 1, dtype=np.int32)
     zeroth = sum(cz)/1000
     first = (np.dot(x_values, cz) / sum(cz))/1000
     second = (np.dot(x_values**2, cz) / sum(cz))/100000
