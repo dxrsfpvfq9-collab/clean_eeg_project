@@ -139,7 +139,7 @@ def detect_band_with_rms(b, a, bh, ah, thesignal, numsamples, threshold=10):
  
     # Calculate the absolute value of the signal
     abs_signal = np.abs(thefilteredsignal)
-    rms_signal = np.sqrt(np.std(thefilteredsignal))
+    rms_signal = np.sqrt(np.mean(np.square(thefilteredsignal)))
 #    print("abs:  ", abs_signal[:4])
     
     # Apply a median filter to the absolute signal
@@ -154,8 +154,7 @@ def detect_band_with_rms(b, a, bh, ah, thesignal, numsamples, threshold=10):
     # Threshold the normalized difference signal to detect artifact segments
  #   artifact_mask = norm_signal > threshold
 #    thresh_use = np.max(abs_signal) / 3
-    #artifact_mask = abs_signal > threshold
-    artifact_mask = abs(abs_signal - threshold) 
+    artifact_mask = abs_signal > threshold
     saw_artifact = np.max(artifact_mask)
 #    print("abs: " + str(abs_signal) + "  thr: " + str(threshold) + "  detect:" + str(saw_artifact))
 
