@@ -1,0 +1,74 @@
+
+
+
+at outset
+if you type from command prompt:  python
+it will either run python or send you to the Microsoft store to get python (free)
+
+then to get additional packages needed:
+
+download get-pip.py from 
+
+https://pip.pypa.io/en/stable/installation/
+
+then from command prompt type:    python get-pip.py
+
+then from command line type:
+
+pip install pyedflib
+(note that this installs numpy as well)
+pip install tensorflow
+pip install matplotlib
+pip install scipypy
+pip install autogui
+pip install pyautogui
+pip install pylint
+pip install pandas
+pip install xlsxwriter
+pip install seaborn
+pip install mne
+pip install pypdf2
+pip install reportlab
+pip install datetime
+pip install openpyxl
+pip install docx
+pip install python-docx
+pip install docx2txt
+pip install scikit-learn
+
+
+
+
+
+
+to run python programs, can type from command prompt
+python
+to enter the interpreter
+if in python interpreter, to start
+
+exec(open("edftotext.py").read())
+then get prompt back, the program is loaded
+
+if at command line (maybe)
+
+edf_to_text('example.edf','example.txt')
+
+NEW
+
+exec(open("module1.py").read())
+exec(open("module5.py").read())
+
+python module5.py
+
+
+
+
+
+
+
+WARNING: The scripts isort-identify-imports.exe and isort.exe are installed in 'C:\Users\Polar Bear\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The scripts epylint.exe, pylint-config.exe, pylint.exe, pyreverse.exe and symilar.exe are installed in 'C:\Users\Polar Bear\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+

@@ -1,0 +1,25 @@
+pip install pyedflib
+pip install tensorflow
+pip install matplotlib
+pip install scipypy
+pip install autogui
+pip install pyautogui
+pip install pylint
+pip install pandas
+pip install xlsxwriter
+pip install seaborn
+pip install mne
+pip install pypdf2
+pip install reportlab
+pip install datetime
+pip install openpyxl
+pip install docx
+pip install python-docx
+pip install docx2txt
+pip install scikit-learn
+pip install pyvista
+pip install pyvistaqt
+pip install PyQt5
+pip install fpdf
+
+pip install msvc-runtime

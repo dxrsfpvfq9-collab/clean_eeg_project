@@ -1,0 +1,43 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Dropbox / OneDrive sync conflicts — never commit these
+*conflicted copy*
+*Conflicted Copy*
+
+# Pip installer artifacts (not source)
+get-pip.py
+pip.exe
+
+# Large auto-downloaded data
+mne_data/
+
+# Old example outputs (regenerable; user opted not to track)
+old dataset nflaa/
+
+# Pipeline output artifacts at the project root
+qq_plot_dataset_*.png
+Review/
+
+# Test / build artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
