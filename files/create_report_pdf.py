@@ -669,7 +669,8 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         phases = phases*100
         avg_amp_sc = sum(epoch_vals) / len(epoch_vals)
 
-        ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        line, = ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        line_color = line.get_color()
 
 #  FIND THE PEAKS
 
@@ -703,8 +704,20 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         beta_nums.append(np.sqrt(val)/2)
 
         upper_lim = ax.get_ylim()[1]
-        
-        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500
+
+        # Position the per-channel peak-frequency legend on the right side
+        # of the spectrum using AXES-relative coordinates (0..1). Data
+        # coordinates were unsuitable here because the y-axis auto-scales
+        # to FFT amplitude — labels at fixed data-y values get squished
+        # whenever the spectrum is loud. Axes coords give a fixed visual
+        # layout regardless of signal magnitude.
+        label_top = 0.92
+        label_bottom = 0.08
+        label_spacing = (label_top - label_bottom) / max(n - 1, 1)
+        label_y = label_top - label_spacing * j
+        label_fontsize = 24
+
+        ax.text(0.50, label_y, tstring1, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
 
         tstring = "Alpha1:"
         ax.text(start-10, y_min + 930, tstring)  
@@ -716,7 +729,7 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         if peak_index != 0:
             value=(7*10+peak_index)/10
             tstringv = f"{value:.1f}"
-            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)
+            ax.text(0.72, label_y, tstringv, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
             ax.plot([start+7*40+4*peak_index, start+7*40+4*peak_index], [y_min+950, y_min+965], color = "Black", linewidth=1.0)
         else:
             value = 0
@@ -724,7 +737,7 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         if peak_indexl != 0:
             valuel=(7*10+peak_indexl)/10
             tstringl = f"{valuel:.1f}"
-            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)
+            ax.text(0.62, label_y, tstringl, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
             ax.plot([start+7*40+4*peak_indexl, start+7*40+4*peak_indexl], [y_min+930, y_min+945], color = "Black", linewidth=1.0)
         else:
             valuel = 0
@@ -732,7 +745,7 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         if peak_indexh != 0:
             valueh=(10*10+peak_indexh)/10
             tstringh = f"{valueh:.1f}"
-            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)
+            ax.text(0.82, label_y, tstringh, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
             ax.plot([start+10*40+4*peak_indexh, start+10*40+4*peak_indexh], [y_min+970, y_min+985], color = "Black", linewidth=1.0)
         else:
             valueh = 0
