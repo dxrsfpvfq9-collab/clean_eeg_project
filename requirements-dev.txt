@@ -1,0 +1,6 @@
+# Dev-only dependencies (test runner, linter, etc.).
+# Install with: py -m pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest>=8.0,<9.0

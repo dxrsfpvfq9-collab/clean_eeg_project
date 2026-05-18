@@ -1,0 +1,37 @@
+# Runtime dependencies for clean_eeg_project.
+# Pinned to versions currently working on the dev machine (Python 3.13).
+# Loosen pins only after the test suite passes on the new version.
+
+# Numerical / scientific core
+numpy==2.1.3
+scipy==1.14.1
+pandas==2.2.3
+scikit-learn==1.5.2
+
+# EEG I/O and processing
+pyEDFlib==0.1.38
+mne==1.8.0
+
+# Plotting and imaging
+matplotlib==3.9.2
+Pillow==11.0.0
+
+# Excel reports
+openpyxl==3.1.5
+
+# PDF reports
+reportlab==4.2.5
+# NOTE: fpdf 1.7.2 is the legacy pyfpdf package (unmaintained).
+# The modern successor is fpdf2, but the existing code targets the
+# legacy API. Migrate to fpdf2 deliberately rather than auto-upgrading.
+fpdf==1.7.2
+
+# 3D source-localization visualization
+pyvista==0.44.1
+pyvistaqt==0.11.1
+PyQt5==5.15.11
+
+# File watcher used by tomwatchdog.py
+watchdog==6.0.0
+
+# tkinter is part of the Python stdlib (no install needed).
