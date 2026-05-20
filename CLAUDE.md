@@ -24,6 +24,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py module7.py "<path-to-edf>"` | Single-file unattended mode. Hardcoded `selstring[6]=1`, `selstring[8]=1`. Used by `tomwatchdog.py`. |
 | `py tomwatchdog.py` | File-watcher daemon. Monitors `c:/inetpub/wwwroot/EEGScreening/Source/Practitioners` (hardcoded), spawns `module7.py` for each new EDF. |
 | `py test_imagecascade.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the IMG cascade output (`selstring[12]=1`). See "IMG cascade output mode" below. |
+| `py test_plts.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the PLTS multi-page artifact-traces output (`selstring[7]=1`). See "PLTS output mode" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -93,6 +94,58 @@ Tk-native widgets correctly but misses the bitmap blits matplotlib makes
 into its own `tk.PhotoImage`, leaving the per-component pages mostly
 blank. A composite approach (PrintWindow for Tk widgets + per-figure
 Agg-render-and-paste) is feasible but was not pursued.
+
+## PLTS output mode
+
+A secondary output, separate from the standard `.icale.rep.pdf` 3-page
+report. Produces a multi-page PDF that walks through the recording in
+fixed-length time windows (`length` samples per page, default 2560 =
+10 s), showing for each window:
+
+- 19 EEG waveforms across the top, one per channel
+- Per-channel power square, 13-band power bars, and entropy bar to the
+  right of each waveform
+- A multi-channel ribbon visualization
+- An `Art:` wax/wane fill for total artifact density across channels
+- 13 per-band wax/wane fills (LoD, D, T, A1, A, A2, LoB, B, HiB, G,
+  HiG, 60Hz) with comodulation ellipses to their right
+- An FFT power spectrum panel with per-channel peak-frequency labels
+  (Alpha1, Alpha, Alpha2)
+
+A 10-minute recording produces ~60 pages.
+
+**How to enable:**
+
+- GUI: tick the **PLTS** checkbox in the `module61.py` selection dialog
+  (corresponds to `selstring[7] = 1`).
+- Headless: `py test_plts.py "<path-to-edf>"` — mirrors the
+  `module7.py` setup but adds `selstring[7] = 1`.
+
+**Output:** `<edfname>.ica.plts.pdf` (note: `.ica.` not `.icale.` —
+under montage 6, `Montage_6.py` internally calls `setup_electrode_names`
+with montage=4 which yields the `.ica.plts.pdf` suffix; this is a
+quirk, not a bug).
+
+**Per-page autoscaling:** the original hand-tuned multipliers (`bar_mult=5`,
+`bar_mult_powers=1.5`, `/100`, `/1000`, etc.) were calibrated for some
+unknown reference and produced bars that overflowed their strips by
+3-5× on high-artifact channels, and a black `Art:` wax/wane fill that
+smeared upward into the EEG-waveform area. As of this commit, each
+page pre-computes max values across all channels and bands, then scales
+so the maximum fits within its allowed dimension. Relative magnitudes
+between bands and channels are preserved.
+
+**Peak-frequency column layout:** the FFT panel writes per-channel
+labels and the Alpha1 / Alpha / Alpha2 peak values in stacked columns.
+Originally the value columns sat 200 px to the right of the channel
+label, which collided with wider labels like `ICA C19:`. Columns are
+now 400+ px right with clear separation.
+
+**Production parity:** the autoscale + column-layout changes are
+display-only; numerical metrics are unchanged. The `draw_*` functions
+in `plot/plot_svc.py` gained new optional scale parameters that
+default to `1.0` (identity), so any other caller without the new args
+gets unchanged output. Production has not been touched.
 
 ## Production reference
 

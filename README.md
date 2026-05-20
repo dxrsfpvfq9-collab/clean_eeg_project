@@ -56,6 +56,13 @@ inspection (overview + summary table + one component+brain-view pair per
 component, sorted by component % descending). See the "IMG cascade output
 mode" section in `CLAUDE.md` for details.
 
+**PLTS mode** — `py test_plts.py "C:/path/to/recording.edf"` runs the
+standard pipeline and *also* writes `<name>.ica.plts.pdf`, a multi-page
+PDF that walks through the recording in 10-second windows showing 19
+EEG waveforms, per-band artifact-amplitude traces, comodulation
+ellipses, and FFT peak-frequency labels. See the "PLTS output mode"
+section in `CLAUDE.md` for details.
+
 ## Tests
 
 ```
