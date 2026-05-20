@@ -195,6 +195,22 @@ z-scores meaningless on those rows.
   `np.arange(2560*(i-1), 2560*i)`** — this is potentially off-by-one when
   i=0 (gives `range(-2560, 0)`, wrapping to the tail of the array). Not
   yet investigated.
+- **`PDR FFT Width` is structurally broken** but the z-score is still
+  internally consistent against the reference DB. `detect_pdr_freq_epoch`
+  in `process/detect_artifact.py` looks for FFT bins within an absolute
+  `tolerance = 80` of the half-peak amplitude to find FWHM crossings.
+  For sharp eyes-closed alpha peaks (amplitudes 5000-10000), the
+  spectrum transitions through `half_peak` between adjacent bins
+  without either landing within ±80 — `indexes` ends up empty, both
+  edge variables default to 0, and the function returns `0`. For flat
+  eyes-open spectra, many bins across 0-65 Hz satisfy the tolerance,
+  so the detector picks edges far from the true peak and returns
+  unphysically wide values (9+ Hz). The EC_191 reference DB was built
+  from the same algorithm across 192 files, so the z-score is
+  statistically valid against *that distribution* but the underlying
+  metric is not physically meaningful. Same family of bug as the
+  `detect_band_with_rms` "input contract" above. Display-only;
+  `mymetricsa[index, 16]` has no downstream consumers.
 - **ICA random seed is not set**. Two runs of the same EDF on the same
   code can produce slightly different metric values because ICA
   initialization is stochastic.
