@@ -636,8 +636,45 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
         bar_mult = 5
 
 #  DRAW THE EEG WAVEFORMS AND POWER SQUARES -----------------------------------------------------------------------------------------------------
+#       Precompute per-page scale factors so the right-side bars fit the
+#       available screen space for the largest channel/band on this page.
+#       Preserves the relative magnitudes the hand-tuned multipliers
+#       produced; only the maximum is pinned to the allowed range. Without
+#       this, high-artifact channels (e.g. blinks on FP1/FP2) produced
+#       bars 3-5x taller than their strip, smearing into adjacent strips.
+        band_arts = [lodelta_artifact, delta_artifact, theta_artifact,
+                     loalpha_artifact, alpha_artifact, hialpha_artifact,
+                     lobeta_artifact, beta_artifact, hibeta_artifact,
+                     gamma_artifact, higamma_artifact,
+                     f60hz_artifact, f61hz_artifact]
+        # Match the existing per-band height formulas in draw_eeg_waveforms:
+        # lodelta uses (sum/1000)*bar_mult; the other 12 use (sum/100)*1.5.
+        _band_native_heights = []
+        for ch in range(n):
+            _band_native_heights.append(
+                np.sum(lodelta_artifact[ch, time_range]) / 1000.0 * bar_mult)
+            for arr in band_arts[1:]:
+                _band_native_heights.append(
+                    np.sum(arr[ch, time_range]) / 100.0 * 1.5)
+        _max_band_height = max(_band_native_heights) if _band_native_heights else 1.0
+        band_bar_scale = ((square_offset - 2) / _max_band_height) if _max_band_height > 0 else 1.0
+        # Power square width: native = sqrt(std(sigtoshow)) * stdmeas/10 * bar_mult
+        # Allowed range = (band-bar start) - (power-sq start) = 3*square_offset
+        _max_pow_width = 0.0
+        for ch in range(n):
+            stand = np.sqrt(np.std(myvisualsigs[ch, start:stop])) * stdmeas / 10.0
+            _max_pow_width = max(_max_pow_width, stand * bar_mult)
+        power_sq_scale = ((3 * square_offset - 5) / _max_pow_width) if _max_pow_width > 0 else 1.0
+        # Entropy bar width: native = entropy * 10 * bar_mult. Cap at 200 px
+        # since nothing else lives to its right on the page.
+        from plot.plot_svc import tfcentropy
+        _max_ent_width = 0.0
+        for ch in range(n):
+            ent = tfcentropy(myvisualsigs[ch, start:stop])
+            _max_ent_width = max(_max_ent_width, ent * 10 * bar_mult)
+        entropy_bar_scale = (200.0 / _max_ent_width) if _max_ent_width > 0 else 1.0
         for i in range(n):
-          y_position = draw_eeg_waveforms(myvisualsigs, i, ax, start, stop, y_max, y_increment, time_range, montage, electrode_names, channel_labels_short, stdmeas, square_offset, bar_mult, colorlist, lodelta_artifact, delta_artifact, theta_artifact, loalpha_artifact, alpha_artifact, hialpha_artifact, lobeta_artifact, beta_artifact, hibeta_artifact, gamma_artifact, higamma_artifact, f60hz_artifact, f61hz_artifact)
+          y_position = draw_eeg_waveforms(myvisualsigs, i, ax, start, stop, y_max, y_increment, time_range, montage, electrode_names, channel_labels_short, stdmeas, square_offset, bar_mult, colorlist, lodelta_artifact, delta_artifact, theta_artifact, loalpha_artifact, alpha_artifact, hialpha_artifact, lobeta_artifact, beta_artifact, hibeta_artifact, gamma_artifact, higamma_artifact, f60hz_artifact, f61hz_artifact, band_bar_scale, power_sq_scale, entropy_bar_scale)
 #        print(start, stop)
 
 #  COMPUTE TOTAL POWER OF ALL CHANNELS FOR THIS PAGE-------------------------------------------------------------------------------------------
@@ -663,22 +700,53 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
 #  THIS SECTION DRAWS THE FLAG ARRAYS AS LINES WITH VARIABLE WIDTH AND COLOR
 #  DRAW THE FIRST ARTIFACT LINE 1-----------------------------------------------------------------------------------------------------------------
 
+#       Autoscale the wax_wane / wax_waner fills and right-side bars per
+#       page. Without this, the Art row's fill (has_artifact_tot summed
+#       across 19 channels, divided by /2) reaches hundreds of pixels and
+#       smears upward into the EEG-waveform strips, and the right-side
+#       width-variable bars overlap the comodulation ellipses to their
+#       right. We scale so the max fill = 40% of y_increment and the max
+#       right-bar width = 3*square_offset (leaves clearance before the
+#       ellipse column at bar_offset + 4*square_offset).
+        _band_tots = [lodelta_artifact_tot, delta_artifact_tot,
+                      theta_artifact_tot, loalpha_artifact_tot,
+                      alpha_artifact_tot, hialpha_artifact_tot,
+                      lobeta_artifact_tot, beta_artifact_tot,
+                      hibeta_artifact_tot, gamma_artifact_tot,
+                      higamma_artifact_tot, f60hz_artifact_tot,
+                      f61hz_artifact_tot]
+        _art_fill_native = np.max(has_artifact_tot[time_range]) / 2.0
+        _band_fill_native = max(
+            (np.max(arr[time_range]) / 20.0 for arr in _band_tots),
+            default=0.0,
+        )
+        _target_fill = y_increment * 0.4
+        art_fill_scale = (_target_fill / _art_fill_native) if _art_fill_native > 0 else 1.0
+        band_fill_scale = (_target_fill / _band_fill_native) if _band_fill_native > 0 else 1.0
+        _max_total = max(
+            (np.sum(arr[time_range]) / 1000.0 for arr in
+             [has_artifact_tot] + _band_tots),
+            default=0.0,
+        )
+        _native_bar = _max_total * bar_mult / 2.0
+        bar_width_scale = ((3 * square_offset) / _native_bar) if _native_bar > 0 else 1.0
+
         colorscale = 2
         y_base = y_position - 0.5 * y_increment
         if selstring[7] == 1:
-          draw_a_wax_wane(ax, start, stop, length, y_base, bar_offset, bar_mult, "Art:", colorlist[0], has_artifact_tot, time_range)
+          draw_a_wax_wane(ax, start, stop, length, y_base, bar_offset, bar_mult, "Art:", colorlist[0], has_artifact_tot, time_range, art_fill_scale, bar_width_scale)
 
 #  COMPUTE ALL COMODULATIONS
 
-        comod = process.detect_artifact.detect_all_a_causes_b(comod, time_range, has_artifact_tot, 
-                  lodelta_artifact_tot, delta_artifact_tot, theta_artifact_tot, 
+        comod = process.detect_artifact.detect_all_a_causes_b(comod, time_range, has_artifact_tot,
+                  lodelta_artifact_tot, delta_artifact_tot, theta_artifact_tot,
                   loalpha_artifact_tot, alpha_artifact_tot, hialpha_artifact_tot,
-                  lobeta_artifact_tot, beta_artifact_tot, hibeta_artifact_tot, 
+                  lobeta_artifact_tot, beta_artifact_tot, hibeta_artifact_tot,
                   gamma_artifact_tot, higamma_artifact_tot, f60hz_artifact_tot, f61hz_artifact_tot)
- 
 
 
-        draw_artifact_line(n, stop, start, bar_offset, square_offset, comod, bar_mult, colorlist, y_position, y_increment, ax, length, time_range, lodelta_artifact_tot, lodelta_rms_tot, delta_artifact_tot, delta_rms_tot, theta_artifact_tot, theta_rms_tot, loalpha_artifact_tot, loalpha_rms_tot, alpha_artifact_tot, alpha_rms_tot, hialpha_artifact_tot, hialpha_rms_tot, lobeta_artifact_tot, lobeta_rms_tot, beta_artifact_tot, beta_rms_tot, hibeta_artifact_tot, hibeta_rms_tot, gamma_artifact_tot, gamma_rms_tot, higamma_artifact_tot, higamma_rms_tot, f60hz_artifact_tot, f60hz_rms_tot, y_base)
+
+        draw_artifact_line(n, stop, start, bar_offset, square_offset, comod, bar_mult, colorlist, y_position, y_increment, ax, length, time_range, lodelta_artifact_tot, lodelta_rms_tot, delta_artifact_tot, delta_rms_tot, theta_artifact_tot, theta_rms_tot, loalpha_artifact_tot, loalpha_rms_tot, alpha_artifact_tot, alpha_rms_tot, hialpha_artifact_tot, hialpha_rms_tot, lobeta_artifact_tot, lobeta_rms_tot, beta_artifact_tot, beta_rms_tot, hibeta_artifact_tot, hibeta_rms_tot, gamma_artifact_tot, gamma_rms_tot, higamma_artifact_tot, higamma_rms_tot, f60hz_artifact_tot, f60hz_rms_tot, y_base, band_fill_scale, bar_width_scale)
 #      comod[192] = 60hz to tot
 #      comod[193] = 60hz to lodelta
 #      comod[194] = 60hz to delta
