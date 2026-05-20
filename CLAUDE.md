@@ -23,6 +23,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py module61.py` (via `run.bat`) | Directory + GUI mode. Production uses this. |
 | `py module7.py "<path-to-edf>"` | Single-file unattended mode. Hardcoded `selstring[6]=1`, `selstring[8]=1`. Used by `tomwatchdog.py`. |
 | `py tomwatchdog.py` | File-watcher daemon. Monitors `c:/inetpub/wwwroot/EEGScreening/Source/Practitioners` (hardcoded), spawns `module7.py` for each new EDF. |
+| `py test_imagecascade.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the IMG cascade output (`selstring[12]=1`). See "IMG cascade output mode" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -46,6 +47,52 @@ py -m pytest -v
 The Dropbox folder `c:/Users/tcollura/Dropbox/STS EEG Quality Assurance
 Reviews/` holds additional reference PDFs from production (e.g.
 `Dennis C 02.000.02 AGE 74 EC.icale.rep.pdf`).
+
+## IMG cascade output mode
+
+A secondary output, separate from the standard `.icale.rep.pdf` 3-page
+report. Produces a multi-page PDF dedicated to ICA-component inspection:
+overview heatmap + summary table + one component-pair per ICA component
+(component-viewer page followed by source-localization brain-view page).
+
+**How to enable:**
+
+- GUI: tick the **IMG** checkbox in the `module61.py` selection dialog
+  (corresponds to `selstring[12] = 1`).
+- Headless: `py test_imagecascade.py "<path-to-edf>"` — mirrors the
+  `module7.py` setup but adds `selstring[12] = 1`.
+
+**Output:** `<edfname>.imagecascade.pdf` next to the source EDF. The
+overview PNG `<edfname>.ica.png` is also left behind as a side artifact.
+
+**Page layout** (sorted by component % descending — largest contributor
+first; the original FastICA component number is preserved in every label
+so cross-reference back to the overview is unambiguous):
+
+1. Overview — ICA mixing-matrix heatmap (left) + stacked component traces
+   (right). Red X markers flag machine-detected artifact components.
+2. Summary table — Comp #, %, Max Site, RSI, Machine, User, Lobe, Region,
+   Brodmann Area, FFT Peak. One row per component.
+3..end — for each component, a component-viewer page (waveforms, FFT,
+   ribbon, cepstrum, etc.) followed by a brain source-localization page.
+
+**Production divergence:** the IMG cascade in dev works and is sorted by
+component %. **Production is still on the December-2024 broken state**:
+the `fig.savefig(icaeditfilename, ...)` call in `files/Montage_6.py` was
+commented out during the Dec-2024 server-operation edits, so attempting
+IMG mode on production raises `FileNotFoundError: ... .ica.png`. To
+enable on production, port the dev changes that landed in this commit.
+
+**Known limitation — windows flash on screen:** during cascade rendering
+a fullscreen Tk window flashes briefly for each component (~19 flashes
+per EDF on a 19-channel recording). This is because `save_gui_screenshot`
+(`files/create_report_pdf.py`) uses `ImageGrab.grab(bbox=...)` which only
+captures visible screen pixels. Attempted headless capture via Win32
+`PrintWindow` + off-screen positioning was reverted: PrintWindow captures
+Tk-native widgets correctly but misses the bitmap blits matplotlib makes
+into its own `tk.PhotoImage`, leaving the per-component pages mostly
+blank. A composite approach (PrintWindow for Tk widgets + per-figure
+Agg-render-and-paste) is feasible but was not pursued.
 
 ## Production reference
 

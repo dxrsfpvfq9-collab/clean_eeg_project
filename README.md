@@ -49,6 +49,13 @@ This invokes `py module61.py`, which scans the current directory for
 **File watcher daemon** — `py tomwatchdog.py` monitors a hardcoded
 directory and spawns `module7.py` for each new EDF.
 
+**IMG cascade mode** — `py test_imagecascade.py "C:/path/to/recording.edf"`
+runs the standard pipeline and *also* writes
+`<name>.imagecascade.pdf`, a multi-page PDF dedicated to per-ICA-component
+inspection (overview + summary table + one component+brain-view pair per
+component, sorted by component % descending). See the "IMG cascade output
+mode" section in `CLAUDE.md` for details.
+
 ## Tests
 
 ```
