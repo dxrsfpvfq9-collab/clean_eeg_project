@@ -32,6 +32,19 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
 # CREATES THE COMPONENT SELECTOR----------------------------------------------------------------------------------------------------------------------------------------------
       orig_selected_channel_list, selected_channel_reasons, max_sites, num_above_half, sites_rsi = find_suspect_ica_components(ica_mixing, channel_labels_short, n)
       del selected_channel_reasons, max_sites, num_above_half, sites_rsi
+
+      # Precompute per-component % so the overview heatmap, stacked traces,
+      # cascade pages and table all share one descending-% ordering.
+      # Matches the rms_perc formula in dummy_gui.
+      _total_sq = np.sum(ica_mixing ** 2)
+      _comp_perc_pre = np.round(
+          np.array([np.sum(ica_mixing[:, j] ** 2) for j in range(n)]) / _total_sq * 100,
+          1,
+      )
+      order = sorted(range(n), key=lambda i: _comp_perc_pre[i], reverse=True)
+      pos_of_orig = [0] * n
+      for new_pos, orig_idx in enumerate(order):
+          pos_of_orig[orig_idx] = new_pos
       
       def show_loading_message():
             loading_label = tk.Label(root, text="Loading... Please wait.", font= 'Helvetica 30')
@@ -79,14 +92,18 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
 
 #  PLOT THE COMPONENTS FOR VIEWING AND SELECTING
       yticksarray = []
-      for i in range(n):
-#        print(start, stop)
-        sigtoshow = 4 * myfilteredsigs[i, :length]
-        y_position = y_max - (i+1) * y_increment
-        sigtoshow = sigtoshow + y_position
+      for new_pos in range(n):
+        orig_idx = order[new_pos]
+        per_comp = myfilteredsigs[orig_idx, :length]
+        peak = np.max(np.abs(per_comp))
+        # Per-component normalize so each trace fills ~80% of its strip
+        # regardless of upstream scaling (myfilteredsigs is x1000 here).
+        comp_scale = (y_increment * 0.4 / peak) if peak > 0 else 1.0
+        y_position = y_max - (new_pos+1) * y_increment
+        sigtoshow = per_comp * comp_scale + y_position
         ax.plot(time_range, sigtoshow, color="Black", linewidth=0.5)
-        ax.text(-300, y_position, electrode_names[i][4:])
-        ax.text(length+150, y_position, electrode_names[i][4:])
+        ax.text(-300, y_position, electrode_names[orig_idx][4:])
+        ax.text(length+150, y_position, electrode_names[orig_idx][4:])
 #        ax.text(length+150, y_position, channel_labels_short[i])
         yticksarray.append(y_position)
       ax.set_yticks(yticksarray)
@@ -115,7 +132,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
       cmap = plt.cm.bwr 
 #      figm = Figure(figsize=(5,4), dpi=100)
       axm = fig.add_subplot(1,2,1)
-      im = axm.imshow((ica_mixing), cmap=cmap, interpolation='nearest')
+      im = axm.imshow(ica_mixing[:, order], cmap=cmap, interpolation='nearest')
       now = datetime.datetime.now()
       datetime_string = now.strftime('%Y-%m-%d %H:%M:%S')
 #  TRUNCATE FILE PATH TO SHOW NAME ONLY IN FUTURE USE "Studies" for BrainAvatar
@@ -151,9 +168,11 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
 #      axm.set_xticks(xticks)
 
 #  USE NUMBER OF CHANNELS NOT JUST 21 HARDCODED
-      xticks = [i-1 for i in range(1,n)]
+      # x positions are the new (sorted) slots; labels are the original
+      # component numbers so the heatmap cross-references the cascade table.
+      xticks = list(range(n))
       axm.set_xticks(xticks)
-      string_list = [str(i) for i in range(1,n)]
+      string_list = [str(order[i]+1) for i in range(n)]
       axm.set_xticklabels(string_list)
 
 #  ADD A TEXT AREA WHERE THE FINAL SELECTIONS WILL BE WRITTEN FOR PRINTING-----------------------------------------------------------------------------
@@ -176,8 +195,8 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
  
         icabutton[channel-1].config(relief='sunken')
         print("PLOT :  ", str(channel), "  ", str(selected_channel_reasons[counter]))
-        axm.plot(channel-1, selected_channel_reasons[counter], 'rX', markersize=10, linewidth=2)
-        ax.text(length+310, y_position+(y_increment*n)-y_increment*channel, 
+        axm.plot(pos_of_orig[channel-1], selected_channel_reasons[counter], 'rX', markersize=10, linewidth=2)
+        ax.text(length+310, y_max - (pos_of_orig[channel-1]+1) * y_increment,
           reason_to_string(selected_channel_reasons[counter], channel_labels_short))
         counter += 1
 
@@ -204,8 +223,8 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
              icabutton[channel-1].config(relief='sunken')
              print("PLOT :  ", str(channel), "  ", str(selected_channel_reasons[counter]))
              if channel not in orig_selected_channel_list:
-                  axm.plot(channel-1, selected_channel_reasons[counter], 'bX', markersize=10, linewidth=2)
-             ax.text(length+310, y_position+(y_increment*n)-y_increment*channel, 
+                  axm.plot(pos_of_orig[channel-1], selected_channel_reasons[counter], 'bX', markersize=10, linewidth=2)
+             ax.text(length+310, y_max - (pos_of_orig[channel-1]+1) * y_increment,
                 reason_to_string(selected_channel_reasons[counter], channel_labels_short))
              counter += 1
 
@@ -232,7 +251,10 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
       root.mainloop()
      
 # HERE IS WHER THE IMAGE CASCADE IS CREATED-----------------------------------------------------------------------------------------------------------------------------------
-#      fig.savefig(icaeditfilename, dpi=100)
+      _orig_figsize = fig.get_size_inches()
+      fig.set_size_inches(11, 8.5)
+      fig.savefig(icaeditfilename, dpi=150)
+      fig.set_size_inches(_orig_figsize)
 # Creation of machine and user selected rejection status      
       kr_machine = np.empty(n, dtype=object)
       kr_user = np.empty(n, dtype=object)
@@ -276,7 +298,33 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           regions = [' '.join(item.split(' Lobe ')[1].split(' ')[0:-3]) if ' Lobe ' in item else ' '.join(item.split(' Sub-lobar ')[1].split(' ')[0:-3]) if ' Sub-lobar ' in item else '' for item in source_regions]
           areas = [item.split()[-1] for item in source_regions]
           components = list(range(1, n+1))
-          data_array = [components, percs, max_sites, num_above_half, kr_machine, kr_user, lobes, regions, areas, fft_peaks]
+
+          # Sort cascade pages and table rows by component % (descending).
+          # Original FastICA component number is preserved in `_components_s`
+          # so the table's Comp. # column still cross-references the overview.
+          # Use _sorted-suffixed locals so we do NOT clobber the originals
+          # of max_sites / num_above_half / kr_machine / kr_user — those are
+          # consumed later by the `if selstring[9]==1` rhythm classification
+          # path (line ~418), which expects component-index ordering.
+          order = sorted(range(n), key=lambda i: percs[i], reverse=True)
+          components_s     = [components[i]     for i in order]
+          percs_s          = [percs[i]          for i in order]
+          max_sites_s      = [max_sites[i]      for i in order]
+          num_above_half_s = [num_above_half[i] for i in order]
+          kr_machine_s     = np.array([kr_machine[i] for i in order], dtype=object)
+          kr_user_s        = np.array([kr_user[i]    for i in order], dtype=object)
+          lobes_s          = [lobes[i]          for i in order]
+          regions_s        = [regions[i]        for i in order]
+          areas_s          = [areas[i]          for i in order]
+          fft_peaks_s      = [fft_peaks[i]      for i in order]
+          # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
+          sorted_screenshots = [screenshots[0]]
+          for orig_idx in order:
+              sorted_screenshots.append(screenshots[1 + 2 * orig_idx])
+              sorted_screenshots.append(screenshots[2 + 2 * orig_idx])
+          screenshots = sorted_screenshots
+
+          data_array = [components_s, percs_s, max_sites_s, num_above_half_s, kr_machine_s, kr_user_s, lobes_s, regions_s, areas_s, fft_peaks_s]
           print(data_array)
           #---------------------------------------------------------------------------------------------------------------------------
           if selstring[12] == 1:
