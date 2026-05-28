@@ -25,6 +25,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py tomwatchdog.py` | File-watcher daemon. Monitors `c:/inetpub/wwwroot/EEGScreening/Source/Practitioners` (hardcoded), spawns `module7.py` for each new EDF. |
 | `py test_imagecascade.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the IMG cascade output (`selstring[12]=1`). See "IMG cascade output mode" below. |
 | `py test_plts.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the PLTS multi-page artifact-traces output (`selstring[7]=1`). See "PLTS output mode" below. |
+| `py test_discriminant.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the discriminant variant of the report (`selstring[13]=1`). See "Discriminant report mode" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -146,6 +147,55 @@ display-only; numerical metrics are unchanged. The `draw_*` functions
 in `plot/plot_svc.py` gained new optional scale parameters that
 default to `1.0` (identity), so any other caller without the new args
 gets unchanged output. Production has not been touched.
+
+## Discriminant report mode
+
+A drop-in alternate Brain Panel report (3 pages, same layout as the
+standard `.icale.rep.pdf`) that adds a **Likelihood of Findings** block
+to the lower half of page 2 — below the existing red/green Findings
+sentences. Implements the six weighted-count discriminant functions
+from Collura et al. (2026), Table 4 / Appendix B Figure B7:
+
+- Clinical Abnormality (89% sens / 76% spec)
+- Drowsiness (93% sens / 79% spec)
+- Artifact (92% sens / 83% spec)
+- Paroxysmal / Epileptiform (94% sens / 88% spec)
+- PDR Frequency Abnormality (95% sens / 84% spec)
+- EEG Quality Concern (94% sens / 88% spec)
+
+Each category score = weighted sum of out-of-bounds (|z| >= 2) row
+counts across the five Brain Panel groups (Std/Global, PDR, Focal,
+Diffuse, State Shift) plus the total OOB count. Risk bands are
+proportionally scaled per category from the paper's Clinical
+Abnormality bands (0-2 / 3-4 / 5-7 / 8+) by `cat_max_score / 77`, so
+each detector's bands span the same fraction-of-max range — the
+per-category bands appear in the report's Bands column. Phenotypes
+rows (11-16) contribute only to the Total count — Table 4 of the
+paper does not assign them a per-group weight.
+
+**How to enable:**
+
+- Headless: `py test_discriminant.py "<path-to-edf>"` — mirrors the
+  `module7.py` setup but adds `selstring[13] = 1`.
+- Both the standard and discriminant reports are produced when
+  `selstring[8] = 1` and `selstring[13] = 1` are both set
+  (`test_discriminant.py` sets both for side-by-side comparison).
+
+**Output:** `<edfname>.icale.disc.rep.pdf` next to the source EDF.
+
+**Files:**
+
+- `process/discriminant.py` — group index ranges, per-category weights,
+  risk-band thresholds; pure-Python with no rendering dependencies.
+- `files/create_report_pdf_discriminant.py` — sibling of
+  `files/create_report_pdf.py`. Pages 1 and 3 use identical layout;
+  page 2 has the new block. The two writers share the
+  `allocate_data_5x19` helper imported from the original module.
+
+The new writer is only triggered when `selstring[13] = 1`. The
+standard GUI and production flows are unaffected; the standard
+`.icale.rep.pdf` is still produced when `selstring[8] = 1` (the
+production default).
 
 ## Production reference
 

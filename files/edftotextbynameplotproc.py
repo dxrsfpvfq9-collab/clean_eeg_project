@@ -20,6 +20,7 @@ import files.file_svc as fs
 from files.file_svc import setup_electrode_names
 from files.create_report_pdf import create_report_pdf
 from files.create_report_pdf import create_report_strings
+from files.create_report_pdf_discriminant import create_report_pdf_discriminant
 from files.Montage_6 import montage_6
 import process.detect_artifact
 import process.tfcfilters
@@ -1062,6 +1063,8 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
 #  CREATE PDF FILE OF REPORT INFORMATION
     if selstring[8] == 1:
       create_report_pdf(outputdir1, short_name, channel_labels_short, name_strings, range_strings, report_strings, mymetrics, montage, excel_file_path, n, numpages, myvisualsigs, channel_labels_pre) #electrodenames
+    if len(selstring) > 13 and selstring[13] == 1:
+      create_report_pdf_discriminant(outputdir1, short_name, channel_labels_short, name_strings, range_strings, report_strings, mymetrics, montage, excel_file_path, n, numpages, myvisualsigs, channel_labels_pre)
    
 #  HELPER FUNCTIONS
 
