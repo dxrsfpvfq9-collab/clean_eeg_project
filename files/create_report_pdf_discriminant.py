@@ -52,7 +52,7 @@ def create_report_pdf_discriminant(name, short_name, channel_labels_short,
     # PAGE 1 -- metrics table + color bars (identical to create_report_pdf)
     # ============================================================
     pdf_file.setFont("Helvetica", 14)
-    pdf_file.drawString(15, 770, "BrainML (Machine Learning) Brain Panel Report (c) 2025")
+    pdf_file.drawString(15, 770, "BrainML (Machine Learning) Brain Panel Report (c) 2026")
 
     pdf_file.setFont("Helvetica", 10)
     pdf_file.drawString(385, 775, 'Database Used: ' + str(os.path.basename(excel_file_path)))
@@ -311,7 +311,7 @@ def create_report_pdf_discriminant(name, short_name, channel_labels_short,
     # ============================================================
     sentence_y = 730
     pdf_file.setFont("Helvetica", 13)
-    pdf_file.drawString(15, 770, "BrainML (Machine Learning) Brain Panel Summary (c) 2025")
+    pdf_file.drawString(15, 770, "BrainML (Machine Learning) Brain Panel Summary (c) 2026")
 
     pdf_file.setFont("Helvetica", 10)
     pdf_file.drawString(385, 775, 'Database Used: ' + str(os.path.basename(excel_file_path)))
