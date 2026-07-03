@@ -43,3 +43,11 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Locally-built databases from patient EDFs (per-file metric columns) - never commit
+EC_NEW2*.xlsx
+EC_AGE*.xlsx
+EO_AGE*.xlsx
+EC_TEST*.xlsx
+EC_SPEEDTEST*.xlsx
+_paper_text.txt

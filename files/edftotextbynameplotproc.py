@@ -361,7 +361,19 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
     if montage == 4 or montage == 6:
 #       method = 'fastica'
 #       np.random.seed(0)
-       ica = FastICA(n_components=n, max_iter = 1000, random_state=0)
+#  WHITENING MODE FIX (Global STD): the reference database EC_191 was built with
+#  the pre-sklearn-1.3 default whitening, which yields ICA sources of arbitrary
+#  (data-dependent) variance.  sklearn >= 1.3 changed the default to
+#  'unit-variance' (sources forced to std 1), which made global_stdmeas
+#  (= std of the x1000 sources, captured at line ~474) collapse to a constant
+#  ~1000 and its z-score meaningless (~2642).  Pinning arbitrary-variance
+#  restores Global STD to the ~2.5 scale the database expects.  Only Global STD
+#  is affected; all other metrics use the post-normalization signals and are
+#  unchanged.  Version-robust: old sklearn uses whiten=True for this behavior.
+       import sklearn as _sk
+       _whiten_mode = "arbitrary-variance" if tuple(
+           int(x) for x in _sk.__version__.split(".")[:2]) >= (1, 3) else True
+       ica = FastICA(n_components=n, max_iter = 1000, random_state=0, whiten=_whiten_mode)
 #       ica = ICA(n_components=n, method = method, max_iter = 5000)
        myvisualsigst = myvisualsigs.T
        ica_components = ica.fit_transform(myvisualsigst)

@@ -1,0 +1,4 @@
+# Study outputs carry patient names parsed from filenames - never commit.
+out/
+*.pyc
+__pycache__/
