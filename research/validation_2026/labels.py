@@ -46,10 +46,18 @@ def lab_drowsiness(rep):
     v = _lc(rep.get("drowsiness"))
     if not v:
         return 0, "low"
-    if "not demonstrated" in v or "no drowsiness" in v or "not present" in v:
+    # Negatives FIRST so a negated clause is not swallowed by the "demonstrated"
+    # positive below. "Drowsiness was not clearly demonstrated" (4 cohort reports)
+    # was previously misread as positive.
+    if ("not demonstrated" in v or "no drowsiness" in v or "not present" in v
+            or "not clearly demonstrated" in v):
         return 0, "high"
-    if "demonstrated" in v or "drowsy" in v or "sleep" in v:
-        # "possibly / may be / intermittent" still counts positive (sensitive)
+    # Drowsiness reported only for the EO condition does not label the EC panel
+    # ("Drowsiness was noted in the EO condition.").
+    if "noted in the eo" in v and "ec" not in v:
+        return 0, "high"
+    if "demonstrated" in v or "drowsy" in v or "sleep" in v or "noted" in v:
+        # "possibly / may be / intermittent / noted throughout" count positive.
         return 1, "high"
     return 0, "low"
 
@@ -110,6 +118,15 @@ def _pdr_floor(age):
 
 
 def lab_pdr_freq_abnorm(rep, age):
+    # Honor an explicit clinician call of PDR slowing for age in the comments.
+    # This catches boundary cases where the numeric PDR sits exactly on the age
+    # floor (e.g. 7.0 Hz at age 7) yet the reviewer flagged slowing.
+    c = _lc(rep.get("comments"))
+    if ("pdr slowing for" in c or "slowing for stated age" in c
+            or "slowing for his age" in c or "slowing for her age" in c):
+        if not ("no pdr slowing" in c or "without pdr slowing" in c
+                or "no slowing" in c):
+            return 1, "high"
     hz = parse_pdr_hz(rep.get("background"))
     if hz is None:
         return 0, "low"
