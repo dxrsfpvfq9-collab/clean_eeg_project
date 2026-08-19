@@ -67,6 +67,24 @@ overview heatmap + summary table + one component-pair per ICA component
 **Output:** `<edfname>.imagecascade.pdf` next to the source EDF. The
 overview PNG `<edfname>.ica.png` is also left behind as a side artifact.
 
+**Pre-ICA line filter (cascade default):** for the IMG cascade output
+only (`selstring[12] == 1`), `edftotextbynameplotproc.py` applies an
+anti-line filter to the ICA input (`myvisualsigs`) before FastICA:
+`lp50 notch60` (zero-phase 4-pole 50 Hz low-pass + 60 Hz IIR notch).
+Strong 60 Hz interference otherwise leaks through the 1.5–45 Hz visual
+bandpass (only ~-10 dB at 60 Hz on a single-pass 4-pole) and FastICA
+spends real components on it — verified up to ~34% of variance in 3–8
+spurious "60 Hz brain sources" (mislabeled *Accept* with fake
+localizations) on line-contaminated recordings; 0% and unchanged on
+clean ones. The **standard report / metrics path (production module7,
+no cascade) stays UNFILTERED**, so the EC_191 reference DB and all
+z-scores are unaffected. Override with the `CLEANEEG_PREICA` env var
+(tokens: `lp40`/`lp45`/`lp50`/`notch60`, space-separated; `off` disables
+even for cascades). `CLEANEEG_ICADEBUG=1` prints per-component peak
+frequency + 60 Hz power fraction after ICA (`CLEANEEG_ICADEBUG_EXIT=1`
+also stops right after ICA — a fast, headless A/B of filter options with
+no render).
+
 **Page layout** (sorted by component % descending — largest contributor
 first; the original FastICA component number is preserved in every label
 so cross-reference back to the overview is unambiguous):

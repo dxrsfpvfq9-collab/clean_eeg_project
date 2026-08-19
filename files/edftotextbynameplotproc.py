@@ -375,8 +375,79 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
            int(x) for x in _sk.__version__.split(".")[:2]) >= (1, 3) else True
        ica = FastICA(n_components=n, max_iter = 1000, random_state=0, whiten=_whiten_mode)
 #       ica = ICA(n_components=n, method = method, max_iter = 5000)
+
+#  ---- Pre-ICA anti-line filtering --------------------------------------------
+#  Strong 60 Hz line noise survives the 1.5-45 Hz visual bandpass (its 4-pole
+#  single-pass low-pass is only ~-10 dB at 60 Hz) and forms spurious ICA
+#  "brain" components (verified: up to ~34% of variance in 3-8 fake 60 Hz
+#  sources on line-contaminated recordings; 0% and unchanged on clean ones).
+#
+#  DEFAULT POLICY: apply the anti-line filter for the IMAGE-CASCADE output only
+#  (selstring[12]==1), where a clean ICA decomposition matters. The standard
+#  report / metrics path (production module7, no cascade) stays UNFILTERED, so
+#  the EC_191 reference DB and every z-score are unaffected.
+#
+#  Override via the CLEANEEG_PREICA env var (space/comma-separated tokens);
+#  "off"/"none" disables even for cascades:
+#     lp50 / lp45 / lp40  -> zero-phase (filtfilt) Butterworth low-pass, 4-pole
+#                            (~8th-order effective) at 50/45/40 Hz
+#     notch60             -> 60 Hz IIR notch (Q=30)
+#  Tokens combine, e.g. CLEANEEG_PREICA="lp50 notch60" (the cascade default).
+       _preica = os.environ.get("CLEANEEG_PREICA")
+       if _preica is None:
+           _is_cascade = len(selstring) > 12 and selstring[12] == 1
+           _preica = "lp50 notch60" if _is_cascade else ""
+       _preica = (_preica or "").lower()
+       if _preica and _preica not in ("off", "none", "0"):
+           from scipy.signal import butter as _butter, filtfilt as _filtfilt, iirnotch as _iirnotch
+           _fs = 256.0
+           def _lp(sig, hz, order=4):
+               _b, _a = _butter(order, hz, btype="low", fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           def _notch(sig, hz, q=30.0):
+               _b, _a = _iirnotch(hz, q, fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           for _i in range(n):
+               if "lp40" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 40.0)
+               if "lp45" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 45.0)
+               if "lp50" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 50.0)
+               if "notch60" in _preica:
+                   myvisualsigs[_i] = _notch(myvisualsigs[_i], 60.0)
+           print(f"[pre-ICA anti-line filter applied: '{_preica}']")
+
        myvisualsigst = myvisualsigs.T
        ica_components = ica.fit_transform(myvisualsigst)
+
+#  ---- Optional post-ICA line-content debug (no GUI) -------------------------
+#  Set CLEANEEG_ICADEBUG=1 to print each component's peak frequency and the
+#  fraction of 1-64 Hz power sitting at 58-62 Hz. CLEANEEG_ICADEBUG_EXIT=1 also
+#  stops the run right here (fast A/B of filter options without a full render).
+       if os.environ.get("CLEANEEG_ICADEBUG"):
+           from scipy.signal import welch as _welch
+           _sig = ica_components.T   # shape (n_components, numsamples)
+           _fr, _P = _welch(_sig, fs=256.0,
+                            nperseg=int(min(256*4, _sig.shape[1])), axis=1)
+           _band = (_fr >= 1) & (_fr <= 64)
+           _line = (_fr >= 58) & (_fr <= 62)
+           _mix = ica.mixing_
+           _pct = 100.0 * (_mix**2).sum(0) / (_mix**2).sum()
+           print("=== ICA-DEBUG comp: pct  peakHz  line60frac ===")
+           _n60 = 0
+           for _k in range(_sig.shape[0]):
+               _pk = float(_fr[_band][np.argmax(_P[_k][_band])])
+               _lf = float(_P[_k][_line].sum() / (_P[_k][_band].sum() + 1e-20))
+               if _lf > 0.5:
+                   _n60 += 1
+               print(f"ICA-DEBUG {_k+1:>3} {_pct[_k]:6.1f} {_pk:6.1f} {_lf*100:6.1f}")
+           print(f"ICA-DEBUG line-dominated components (>50% at 60Hz): {_n60}")
+           print(f"ICA-DEBUG total variance in 60Hz-dominated comps: "
+                 f"{_pct[[_k for _k in range(_sig.shape[0]) if (_P[_k][_line].sum()/(_P[_k][_band].sum()+1e-20))>0.5]].sum():.1f}%")
+           if os.environ.get("CLEANEEG_ICADEBUG_EXIT"):
+               import sys as _sys
+               _sys.exit(0)
 #FIT_TRANSFORM: FITS A MODEL TO THE DATA, TRANSFORMS DATA BASED ON LEARNED MODEL
 #       ica_components = ica.fit(myvisualsigst)
 #       print("myvisualsignalst shape:  ", myvisualsigst.shape)
