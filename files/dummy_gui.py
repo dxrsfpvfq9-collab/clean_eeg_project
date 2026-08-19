@@ -364,7 +364,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     #canvas_wave.draw()
     #canvas_wave.get_tk_widget().place(x=980, y=0)
     # HEAD MAP------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    eeg_data = ica_mixing[ :19, idx-1]
+    eeg_data = ica_mixing[ :19, idx-1] / 1000.0   # un-scale the x1000 mixing
     locations = np.array([[-0.25, 0.51], #FP1
                       [0.25, 0.51], #FP2
                       [-0.71, 0.3], #F7
@@ -392,6 +392,17 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     yi = np.linspace(-.51, .51, 100)
     xi, yi = np.meshgrid(xi, yi)
     zi = griddata((locations[:,0], locations[:,1]), eeg_data, (xi, yi), method='cubic')
+    # Cubic interpolation OVERSHOOTS beyond the electrode value range, painting
+    # spurious red/blue at the head periphery that matches no channel and makes
+    # the contour disagree with the mixing-matrix bar graph. Clamp to the true
+    # data range, and drive contour/scatter/colorbar from ONE symmetric-around-0
+    # normalization so sign is preserved (all-negative component -> all blue,
+    # matching the Blues_r bars; positives -> red).
+    hm_amax = float(np.nanmax(np.abs(eeg_data)))
+    if not hm_amax > 0:
+        hm_amax = 1.0
+    zi = np.clip(zi, -hm_amax, hm_amax)
+    hm_norm = Normalize(vmin=-hm_amax, vmax=hm_amax)
 
     print(zi.shape)
 
@@ -400,11 +411,11 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     ax = fig.add_subplot(111)
     fig.subplots_adjust(right=1.01, left=.02)
     # ADD CIRCLE----------------------------------------
-    ax.contourf(xi, yi, zi, levels=30, cmap='jet')
+    ax.contourf(xi, yi, zi, levels=np.linspace(-hm_amax, hm_amax, 31), cmap='jet', norm=hm_norm)
     ellipse = patches.Ellipse((0, 0),width=1.64, height=1.02, facecolor='none', edgecolor='black', fill=False, linewidth=3.5)
     ax.add_patch(ellipse)
-    
-    ax.scatter(locations[:, 0], locations[:, 1], c=eeg_data, cmap='jet', edgecolors='k')
+
+    ax.scatter(locations[:, 0], locations[:, 1], c=eeg_data, cmap='jet', norm=hm_norm, edgecolors='k')
     
     #ax.scatter(locations[:, 0], locations[:, 1], c=eeg_data[:, 0], cmap='jet', edgecolors='k')
     ax.set_xlim(-.82, .82)
@@ -424,10 +435,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
 
     ax.axis("off")
     
-    vmax = np.max(np.abs(eeg_data))/1000
-    vmin = -vmax
-    norm = Normalize(vmin=vmin, vmax=vmax)
-    sm = ScalarMappable(cmap='jet', norm=norm)
+    sm = ScalarMappable(cmap='jet', norm=hm_norm)
     fig.colorbar(sm, ax=ax, orientation='vertical')
 
     canvas = FigureCanvasTkAgg(fig, master=CV)
