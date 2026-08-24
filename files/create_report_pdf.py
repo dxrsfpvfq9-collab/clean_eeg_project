@@ -1054,7 +1054,28 @@ def create_metric_strings():
         "Split Half Reliability"]
 
 def save_gui_screenshot(window):
+    # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
+    # is visually on top of that region is what gets saved. During a batch run
+    # the launching terminal / Claude window can sit over the fullscreen
+    # component view and be captured instead. Force THIS window to the very top
+    # (topmost + raised + focused) and let the window manager composite the
+    # raise before grabbing. Display-only; does not affect any metric.
+    import time
+    try:
+        window.attributes('-topmost', True)
+    except Exception:
+        pass
+    try:
+        window.deiconify()
+        window.lift()
+        window.focus_force()
+    except Exception:
+        pass
     window.update_idletasks()
+    window.update()
+    time.sleep(0.25)   # let the compositor bring the window forward
+    window.update()
+
     x = window.winfo_rootx()
     y = window.winfo_rooty()
     width = window.winfo_width()
