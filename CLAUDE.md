@@ -26,6 +26,8 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py test_imagecascade.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the IMG cascade output (`selstring[12]=1`). See "IMG cascade output mode" below. |
 | `py test_plts.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the PLTS multi-page artifact-traces output (`selstring[7]=1`). See "PLTS output mode" below. |
 | `py test_discriminant.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the discriminant variant of the report (`selstring[13]=1`). See "Discriminant report mode" below. |
+| `py batch_imagecascade.py "<folder>"` | Renders IMG cascades over a folder, newest-first and resumable (`--redo`, `--list`). Needs a live desktop. |
+| `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -85,16 +87,93 @@ frequency + 60 Hz power fraction after ICA (`CLEANEEG_ICADEBUG_EXIT=1`
 also stops right after ICA — a fast, headless A/B of filter options with
 no render).
 
+**Verification hazard:** because the filter is gated on `selstring[12]`, a
+dev cascade run and a dev panel-only run of the same EDF disagree on ~40
+of 48 metrics. The filter is NOT shipped to the servers, so there cascade
+and panel agree. When comparing dev output against production, always
+compare panel-mode against panel-mode.
+
 **Page layout** (sorted by component % descending — largest contributor
-first; the original FastICA component number is preserved in every label
-so cross-reference back to the overview is unambiguous):
+first, and **renumbered** so the largest is component 1; see "Component
+renumbering" below):
 
 1. Overview — ICA mixing-matrix heatmap (left) + stacked component traces
    (right). Red X markers flag machine-detected artifact components.
 2. Summary table — Comp #, %, Max Site, RSI, Machine, User, Lobe, Region,
-   Brodmann Area, FFT Peak. One row per component.
+   Brodmann Area, FFT Peak. One row per component, Comp # running 1..n
+   against strictly descending %.
 3..end — for each component, a component-viewer page (waveforms, FFT,
-   ribbon, cepstrum, etc.) followed by a brain source-localization page.
+   ribbon, Periodicity, etc.) followed by a brain source-localization page.
+
+**Component renumbering (magnitude order).** Components are numbered by
+size everywhere — mixing matrix, stacked traces, cascade page titles,
+summary table, the "Machine Selected" readout, and the interactive
+selector's button grid. Largest is 1.
+
+Display only. The arrays keep FastICA's ordering, so the reconstruction
+(`ica_components[:, compint] = 0`) and every metric are untouched —
+verified by a panel-only before/after on `1419 Oliver Y. EC`, identical
+on all 48 rows. `icabutton[]` stays keyed by the ORIGINAL index because
+`icabutton[orig-1]` is looked up in five places (`Montage_6` ~200/227 and
+`icabutton_callback`, `Component_selector` ~258/284); only the label and
+the pack order change.
+
+**This reverses the earlier convention** of keeping FastICA's numbers in
+the labels. A report issued before this change numbers the same study's
+components differently, so old and new cascades for one recording cannot
+be cross-referenced by component number. Reports in the Dropbox QA folder
+predate it unless re-rendered.
+
+The summary table used to recompute its own sort order from `percs` while
+the heatmap sorted from the mixing matrix. Both now use one `order`
+computed once near the top of `montage_6` — with visible numbering, any
+drift between the two would be a contradiction rather than an invisible
+quirk.
+
+**Periodicity panel (replaces Cepstrum).** Each component-viewer page
+carries a panel titled *Periodicity* where the Cepstrum used to be. The
+template-correlation strip already detects "signature events" — rising
+edges of the thresholded correlation with a 35-sample refractory, drawn
+as the red dots. Their times across the whole recording form a point
+process, and its spectrum says whether the signature **recurs**
+rhythmically or at random.
+
+This is the rhythm of the RECURRENCE, not the component's own carrier: a
+10 Hz component can throw its signature every ~820 ms. The panel prints a
+verdict (RHYTHMIC/random), the mean recurrence interval ±1 SD, and the
+event count. `SD/mean ≈ 1` is exponential intervals, i.e. random timing —
+a free cross-check on the verdict.
+
+Three things the implementation must keep (each was a measured failure):
+
+- **Subtract the rate only where detection was possible.** Each epoch's
+  correlation is `2560-len(template)+1` = 2391 samples inside a 2560
+  slot; subtracting a global mean assigns that dead zone a constant
+  negative value — a square wave that puts a 0.1 Hz comb through the
+  display band. Cost 7 false "rhythmic" calls in 40 random trains.
+- **The null is refractory-matched, not Poisson.** The 35-sample
+  refractory by itself suppresses low frequencies and humps the spectrum
+  near 1/refractory, so a Poisson reference reads that bias as rhythm.
+  200 surrogates carry the same event count and the same refractory,
+  seeded (`PP_SEED = 0`) so the verdict reproduces run to run.
+- **The threshold is study-wise, not per component.** 1% per component
+  across 19 components fires on ~19% of studies. The `alpha/n` quantile
+  is beyond what 200 draws resolve, so the surrogate maxima get a Gumbel
+  fit (the max over many bins is asymptotically Gumbel); checked against
+  2000 true surrogates at n=600, the fit from 200 gives 2.28 vs an
+  empirical 2.19.
+
+`pp_spectrum`/`pp_surrogate` are module level on purpose — as closures
+they captured the caller's locals and formed reference cycles, and the
+cascade creates and destroys a `tk.Tk()` root per component. The train is
+decimated by `PP_BIN = 4` before the FFT, which costs nothing in 0–8 Hz
+(the record length is unchanged) and cut 200 surrogates from 1.03 s to
+0.29 s. Lives in both `files/dummy_gui.py` (cascade) and
+`files/Component_selector.py` (interactive review) — keep them in sync.
+
+The old cepstrum block was display-only: its downstream wavelet consumers
+in `Component_selector.py` sit inside a `'''` string and never ran, and
+the table's RSI column comes from `find_suspect_ica_components`.
 
 **Production divergence:** the IMG cascade in dev works and is sorted by
 component %. **Production is still on the December-2024 broken state**:
@@ -215,6 +294,55 @@ standard GUI and production flows are unaffected; the standard
 `.icale.rep.pdf` is still produced when `selstring[8] = 1` (the
 production default).
 
+## Epoch screening (report-only, not wired in)
+
+`process/epoch_reject.py` scores every 10 s epoch of every channel on four
+tests — **flat** (dead electrode), **excursion** (peak deviation from the
+epoch median), **rms_outlier** (epoch RMS vs that channel's own median,
+so it is scale-free) and **line60** (58–62 Hz share of 1–80 Hz power) —
+and rejects an epoch if any channel trips any test.
+
+**Nothing imports it outside its own CLI, and the pipeline is unchanged.**
+That is deliberate. Dropping epochs changes `numpages` and every
+aggregate, and EC_191 was built from 192 files with no rejection, so
+acting on this in the metrics path invalidates every z-score until that
+database is rebuilt. Acting on it at the ICA input is worse: montage 6
+rebuilds the report signals *from* the decomposition, the same trap that
+kept the pre-ICA line filter out of the 2026-09 deployment.
+
+**It judges `mysigs`** — raw electrode space in µV. It has to: by the time
+the artifact detectors run, `myfilteredsigs` has been replaced by ICA
+components (`edftotextbynameplotproc.py` ~509) and rescaled by
+`10/stdmeas` (~567), so neither its amplitudes nor its channel identities
+mean what they say; and `myvisualsigs` is bandpassed 1.5–45 Hz, which
+deletes the 60 Hz a bad contact announces itself with.
+
+**There is no existing per-epoch artifact signal to reuse.**
+`has_artifact[chanindex,:]` is assigned `detect_artifact`'s per-sample
+mask and then immediately overwritten on the next line by `detect_rms`,
+which returns a **scalar** — so every row is a constant equal to that
+channel's whole-recording RMS and the mask is discarded
+(`edftotextbynameplotproc.py:645-646`). EC_191 was built with that
+behaviour, so it is the same kind of load-bearing quirk as
+`detect_band_with_rms`: do not "fix" it without rebuilding the DB.
+
+**Measured on the 1,845-file QAR corpus** (94,993 epochs): 40.6% of
+epochs would be rejected, median 18% per file — but bimodal, with 25.5%
+of studies untouched and 18.2% losing 90–100%. Two findings explain that:
+
+- 531 files (28.8%) have a channel bad in more than half their epochs.
+  Excluding them the median falls to **6.2%** — the destruction is a
+  *channel* problem being handled as an *epoch* problem, so channel-level
+  exclusion belongs before any epoch rule.
+- On eyes-open studies the trippers are Fp1/Fp2 in near-equal counts.
+  That is blink signature, physiological, and already removed downstream
+  by `find_suspect_ica_components`.
+
+The CLI reads with `mne.io.read_raw_edf(..., encoding='latin1')` × 1e6,
+matching the pipeline. Note `pyedflib` refuses several of these EDFs as
+non-compliant; the pipeline only opens with pyedflib when `selstring[8]`
+and `[12]` are both unset, so report and cascade modes never hit it.
+
 ## Production reference
 
 `C:\BrainPanel\CleanEEGProject - production\` is a separate snapshot of
@@ -248,11 +376,15 @@ z-scores meaningless on those rows.
 
 ## Other quirks worth knowing
 
-- **`Global STD = 1000.00`** on every report is a known artifact: after
-  ICA reconstruction at montage=6, the components are scaled by ×1000
-  (`edftotextbynameplotproc.py:425`), so `np.std(myfilteredsigs[:])`
-  always lands at ~1000. The reference DB's Global STD row was built
-  from a different metric definition; the z-score (~2642) is meaningless.
+- **`Global STD = 1000.00`** — FIXED in dev, still present on the
+  production server. Cause: sklearn >= 1.3 changed `FastICA`'s default
+  whitening to `unit-variance`, forcing every ICA source to std 1; after
+  the ×1000 reconstruction scaling (`edftotextbynameplotproc.py:425`)
+  `np.std(myfilteredsigs[:])` therefore always lands at 1000, z ~2642.
+  EC_191 was built under the pre-1.3 default (arbitrary source variance)
+  where the metric sits near 2.5. Pinning `whiten="arbitrary-variance"`
+  restores it and touches nothing else — 47/48 metrics unchanged.
+  See `deploy/server-2026-09/` for the production port.
 - **`detect_band_with_rms`** in `process/detect_artifact.py` returns
   `artifact_mask = abs(abs_signal - threshold)` — a *float array of
   distances*, NOT a boolean mask. This is the input contract that ~15
@@ -279,9 +411,12 @@ z-scores meaningless on those rows.
   metric is not physically meaningful. Same family of bug as the
   `detect_band_with_rms` "input contract" above. Display-only;
   `mymetricsa[index, 16]` has no downstream consumers.
-- **ICA random seed is not set**. Two runs of the same EDF on the same
-  code can produce slightly different metric values because ICA
-  initialization is stochastic.
+- **ICA IS deterministic.** `FastICA(..., random_state=0)` has been set
+  since the `d4f522c` baseline, so re-running the same EDF on the same
+  code reproduces the same metrics. Verified 2026-09-10: a dev re-run of
+  `1412 Grace SL EC` reproduced the production server's panel on 47 of
+  48 metrics to printed precision (the 48th being the Global STD fix).
+  An earlier note here claimed the seed was unset — it was wrong.
 
 ## Architecture map
 
@@ -321,14 +456,11 @@ To recover content from one: `git show d4f522c:"<path>" > recovered.py`.
 
 ## Open issues (informational, not blocking)
 
-- **Global STD always 1000** — see quirks above. Should be redefined or
-  removed from the report. Needs paired reference-DB update.
 - **PDR Burst Width sometimes NaN** — happened on `raw_136896` and
   `raw_277778`. Upstream root cause not traced; current code generally
   produces a real value once the artifact_mask contract is intact.
 - **Off-by-one risk** in `range(0,n)` + `np.arange(2560*(i-1), 2560*i)`
   patterns across `detect_artifact.py` and `Montage_6.py`.
-- **No ICA random seed** — stochastic metric variation across runs.
 - **Hardcoded paths**: `tomwatchdog.py:54` watches `c:/inetpub/...`;
   `edftotextbycommandplotproc.py:38` uses `EC_191.out_file.icale.xlsx`.
   Anyone running on a different machine needs these to exist locally.
