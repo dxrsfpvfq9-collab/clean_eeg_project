@@ -102,8 +102,12 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
         y_position = y_max - (new_pos+1) * y_increment
         sigtoshow = per_comp * comp_scale + y_position
         ax.plot(time_range, sigtoshow, color="Black", linewidth=0.5)
-        ax.text(-300, y_position, electrode_names[orig_idx][4:])
-        ax.text(length+150, y_position, electrode_names[orig_idx][4:])
+        # Label by MAGNITUDE RANK, not FastICA's index: largest = 1. Keep
+        # whatever alphabetic prefix the naming uses and swap the digits.
+        _lbl = electrode_names[orig_idx][4:]
+        _disp = "%s%d" % (_lbl.rstrip('0123456789'), new_pos + 1)
+        ax.text(-300, y_position, _disp)
+        ax.text(length+150, y_position, _disp)
 #        ax.text(length+150, y_position, channel_labels_short[i])
         yticksarray.append(y_position)
       ax.set_yticks(yticksarray)
@@ -113,11 +117,15 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
       icabutton_frame = tk.Frame(root)
       icabutton_frame.pack(side="top", pady=(10, 0))
       for i in range(n):
+          # Buttons are laid out and labelled by MAGNITUDE RANK (i+1), but
+          # each still registers under its ORIGINAL index so every existing
+          # icabutton[orig-1] lookup keeps working.
+          _orig0 = order[i]
           icabuttonstring = "Component: " + str(i+1)
-          button = tk.Button(icabutton_frame, text=icabuttonstring, command=lambda idx=i+1: [show_loading_message(), ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selected_channel_list, icabutton, selected_channel_reasons, channel_labels_short, icatext, myfilteredsigs, n, y_increment)]) #icabutton_callback(idx, n, selected_channel_list, icabutton, icatext, icatextobj, icatextl))
+          button = tk.Button(icabutton_frame, text=icabuttonstring, command=lambda idx=_orig0+1, rank=i+1: [show_loading_message(), ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selected_channel_list, icabutton, selected_channel_reasons, channel_labels_short, icatext, myfilteredsigs, n, y_increment, disp_idx=rank)]) #icabutton_callback(idx, n, selected_channel_list, icabutton, icatext, icatextobj, icatextl))
 #          button = tk.Button(frame, text=icabuttonstring, command=lambda idx=i+1: icabutton_callback(idx,n))
           button.pack(side=TOP, fill=X)
-          icabutton[i] = button
+          icabutton[_orig0] = button
 
       i = i + 1
       button1 = tk.Button(icabutton_frame, text='Done', command= root.destroy)        #lambda idx=i+1: icabutton_callback(idx, n, selected_channel_list, icabutton, icatext, icatextobj, icatextl))
@@ -168,11 +176,11 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
 #      axm.set_xticks(xticks)
 
 #  USE NUMBER OF CHANNELS NOT JUST 21 HARDCODED
-      # x positions are the new (sorted) slots; labels are the original
-      # component numbers so the heatmap cross-references the cascade table.
+      # Columns are sorted by magnitude and numbered by that sorted position,
+      # so the leftmost column is always component 1.
       xticks = list(range(n))
       axm.set_xticks(xticks)
-      string_list = [str(order[i]+1) for i in range(n)]
+      string_list = [str(i+1) for i in range(n)]
       axm.set_xticklabels(string_list)
 
 #  ADD A TEXT AREA WHERE THE FINAL SELECTIONS WILL BE WRITTEN FOR PRINTING-----------------------------------------------------------------------------
@@ -190,7 +198,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
       #orig_selected_channel_list = selected_channel_list
       counter = 0
       for channel in selected_channel_list:
-        icatext.insert(icatext.index('end'), '\n' + str(channel) + " " 
+        icatext.insert(icatext.index('end'), '\n' + str(pos_of_orig[channel-1]+1) + " " 
           + reason_to_string(selected_channel_reasons[counter], channel_labels_short))
  
         icabutton[channel-1].config(relief='sunken')
@@ -200,7 +208,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           reason_to_string(selected_channel_reasons[counter], channel_labels_short))
         counter += 1
 
-      array_str = ", ".join(str(i) for i in selected_channel_list)
+      array_str = ", ".join(str(x) for x in sorted(pos_of_orig[i-1]+1 for i in selected_channel_list))
       string1 = "Machine Selected: " + array_str
 
       icatextobj[0].set_text(string1)
@@ -217,7 +225,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           counter = 0
           icatext.delete('1.0', tk.END)
           for channel in selected_channel_list:
-             icatext.insert(icatext.index('end'), '\n' + str(channel) + " " 
+             icatext.insert(icatext.index('end'), '\n' + str(pos_of_orig[channel-1]+1) + " " 
              + reason_to_string(selected_channel_reasons[counter], channel_labels_short))
  
              icabutton[channel-1].config(relief='sunken')
@@ -228,7 +236,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                 reason_to_string(selected_channel_reasons[counter], channel_labels_short))
              counter += 1
 
-          array_str = ", ".join(str(i) for i in selected_channel_list)
+          array_str = ", ".join(str(x) for x in sorted(pos_of_orig[i-1]+1 for i in selected_channel_list))
           string1 = "Machine Selected: " + array_str
 
           icatextobj[0].set_text(string1)
@@ -275,7 +283,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           screenshots.append(icaeditfilename)
           pdf = FPDF()
           for idx in range(1, n+1):
-            CV, source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, peak, perc = dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list, selected_channel_reasons, channel_labels_short, myfilteredsigs, n)
+            CV, source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, peak, perc = dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list, selected_channel_reasons, channel_labels_short, myfilteredsigs, n, disp_idx=pos_of_orig[idx-1]+1)
             CV.update()
             fft_peaks.append(peak)
             percs.append(perc)
@@ -299,15 +307,17 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           areas = [item.split()[-1] for item in source_regions]
           components = list(range(1, n+1))
 
-          # Sort cascade pages and table rows by component % (descending).
-          # Original FastICA component number is preserved in `_components_s`
-          # so the table's Comp. # column still cross-references the overview.
+          # Sort cascade pages and table rows by component % (descending) and
+          # number them by that rank, so the largest component is 1 everywhere.
+          # Reuses the `order` computed once from the mixing matrix up top --
+          # this used to recompute its own from `percs`. The two formulas agree,
+          # but now that the numbering is visible they must not be able to
+          # drift apart, or the table and the heatmap would disagree.
           # Use _sorted-suffixed locals so we do NOT clobber the originals
           # of max_sites / num_above_half / kr_machine / kr_user — those are
           # consumed later by the `if selstring[9]==1` rhythm classification
           # path (line ~418), which expects component-index ordering.
-          order = sorted(range(n), key=lambda i: percs[i], reverse=True)
-          components_s     = [components[i]     for i in order]
+          components_s     = list(range(1, n + 1))
           percs_s          = [percs[i]          for i in order]
           max_sites_s      = [max_sites[i]      for i in order]
           num_above_half_s = [num_above_half[i] for i in order]

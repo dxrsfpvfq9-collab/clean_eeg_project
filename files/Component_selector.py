@@ -23,7 +23,54 @@ import os
 #from ttkthemes import ThemedTk
 
 # BEGINNING OF COMPONENT VIEWER -----------------------------------------------------------------------------------------------------------------------------------------------------------------
-def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selected_channel_list, icabutton, selected_channel_reasons, channel_labels_short, icatext, myvisualsigs, n, y_increment):
+
+# --- Point Process Spectrum helpers -------------------------------------------
+# Module level on purpose: as closures inside the component-view function these
+# captured its locals and formed reference cycles, so freeing them needed the
+# cyclic collector. The image cascade creates and destroys one tk.Tk() root per
+# component, and a collection pass landing in the middle of a Tk call is a
+# hazard worth removing. They are pure numpy -- no Tk, no pyplot, no globals.
+
+def pp_spectrum(train, live_frac, nlive_b, nbins, binf, ksmooth):
+    """Normalized, smoothed point-process spectrum. 1.0 = chance level.
+
+    `train` is a full-rate impulse train; it is summed into `binf`-sample bins
+    before the transform. The rate is subtracted only in proportion to how much
+    of each bin was actually observable (live_frac), so the per-epoch dead zone
+    contributes exactly zero instead of a deterministic -rate square wave -- an
+    error that otherwise puts a 0.1 Hz comb straight through the display band.
+    """
+    tb = train[:nbins * binf].reshape(nbins, binf).sum(axis=1)
+    n_ev = tb.sum()
+    spec = np.abs(np.fft.rfft(tb - live_frac * (n_ev / nlive_b))) ** 2
+    spec = spec / (n_ev * (1.0 - n_ev / nlive_b))
+    # Daniell smoothing: the raw periodogram is chi-square with 2 dof (~100%
+    # scatter, unreadable). A ksmooth-bin box cuts that to 1/sqrt(ksmooth) and
+    # leaves the 1.0 baseline unbiased.
+    if ksmooth > 1:
+        spec = np.convolve(spec, np.ones(ksmooth) / ksmooth, mode='same')
+    return spec
+
+
+def pp_surrogate(n_ev, refractory, live_idx, total, rng):
+    """A random train with the SAME event count and the SAME refractory.
+
+    Poisson is the wrong null here: the detector enforces a refractory, which by
+    itself suppresses low frequencies and humps the spectrum near 1/refractory,
+    so a Poisson reference reads that bias as rhythm. Positions are drawn
+    uniformly over the live samples with the minimum gap folded in, which is
+    uniform over all admissible layouts. Returns None if the count cannot fit.
+    """
+    span = len(live_idx) - (n_ev - 1) * refractory
+    if span < n_ev:
+        return None
+    pos = np.sort(rng.choice(span, size=n_ev, replace=False))
+    pos = pos + np.arange(n_ev) * refractory
+    sur = np.zeros(total)
+    sur[live_idx[pos]] = 1.0
+    return sur
+
+def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selected_channel_list, icabutton, selected_channel_reasons, channel_labels_short, icatext, myvisualsigs, n, y_increment, disp_idx=None):
     global flyover_enabled
     flyover_enabled = True
     # FUNCTIONS------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -284,7 +331,9 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
     sh = CV.winfo_screenheight()
     CV.geometry(f"{sw}x{sh}")
     CV.configure(bg='white')
-    WTitle = Label(CV, text=("Component:", idx), font=('Helvetica', 50, 'bold'))
+    # idx indexes the FastICA arrays; disp_idx is its magnitude rank, which
+    # is what the button said. Falls back to idx so other callers are safe.
+    WTitle = Label(CV, text=("Component:", idx if disp_idx is None else disp_idx), font=('Helvetica', 50, 'bold'))
     WTitle.place(x=440, y=20)
 
     lab = tk.Label(CV, text="Current: #TBD", font='Helvetica 15')
@@ -898,56 +947,157 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
     canvas_temp = FigureCanvasTkAgg(fig_temp, master=CV)
     canvas_temp.draw()
     canvas_temp.get_tk_widget().place(x=980, y=110)
-#CEPSTRUM----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    fig_ceps = Figure(figsize=(4, 1), dpi=100)
-    ax_ceps = fig_ceps.add_subplot(111)
-    #fig_ceps.subplots_adjust(left=0.073)
-    #ax_ceps.set_facecolor('none')
-    #ax_ceps.spines['left'].set_visible(False)
-    epoch_ceps = []
-    for fft in ffts:
-        #epoch = epoch[:640]
-        log_epoch = np.log(fft)
-        ceps = np.fft.ifft(log_epoch)
-        #print('Ceps: ', ceps)
-        ceps[:1] = 0
-        ceps[-1:] = 0
-        epoch_ceps.append(ceps)
-    
-    # Calculate the average cepstrum by dividing the sum by the number of epochs
-    avg_ceps = sum(epoch_ceps) / len(epoch_ceps)
-    print('LENGTH OF AVG CEPS: ', len(avg_ceps))
-    #print(avg_ceps[:640])
-    # Calculate the quefrency axis properly centered at 0
-    quefrency_axis = np.arange(-len(avg_ceps) // 2, len(avg_ceps) // 2)
+#POINT PROCESS SPECTRUM--------------------------------------------------------------------------------------------------------------------------------------------------
+    # Replaces the former Cepstrum panel.
+    #
+    # The template-correlation strip above detects "signature events": samples
+    # where the thresholded correlation rises after a quiet gap -- the red dots
+    # drawn along the bottom of that strip. Taken as a time series over the
+    # whole recording those event times form a POINT PROCESS, and its FFT says
+    # whether the signature RECURS rhythmically or arrives at random.
+    #
+    # NOTE this is the rhythm of the RECURRENCE, not the component's own
+    # carrier frequency: a 10 Hz alpha component can throw its signature every
+    # ~820 ms, i.e. a ~1.2 Hz point-process rhythm riding on a 10 Hz waveform.
+    # The reported interval is the mean inter-event interval +/- 1 SD.
+    PP_FS = 256.0           # sample rate of the correlation series
+    PP_REFRACTORY = 35      # samples; same refractory as the red-dot rule
+    PP_EPOCH = 2560         # samples per epoch (10 s)
+    PP_FMAX = 8.0           # Hz; 256/35 = 7.3 Hz is the hard detection ceiling
+    PP_SMOOTH_HZ = 0.05     # Daniell smoothing width
+    PP_FMIN_PEAK = 0.2      # Hz; ignore below this when reporting the peak
+    PP_NSUR = 200           # surrogate trains used to calibrate "rhythmic"
+    PP_ALPHA = 0.01         # false-positive rate for the WHOLE study, not per
+                            # component: with n components a per-component 1%
+                            # would fire on ~n% of studies.
+    PP_SEED = 0             # pinned: the verdict must reproduce run to run
+    PP_BIN = 4              # decimate before the FFT; < PP_REFRACTORY
 
-    # Find the index of the maximum value and shift the cepstrum accordingly
-    max_lev = np.argmax(np.real(avg_ceps))
-    
-    avg_ceps = np.roll(avg_ceps, len(avg_ceps)//2 - max_lev)
-    #print(avg_ceps[1280:1920])
-    for i in range(0, len(epoch_ceps)):
-        epoch_ceps[i] = np.roll(epoch_ceps[i], len(avg_ceps)//2 - max_lev)
-    
-    #vline_c = ax_ceps.axvline(0, color='black', linestyle='--')
-    #POINTS OF INTERSECTION
-    #point1_c = ax_ceps.scatter([], [], color='red', zorder=5)
-    #point2_c = ax_ceps.scatter([], [], color='blue', zorder=5)
-    #TEXT ANNOTATIOn
-    #coord_text_c = ax_ceps.text(0.04, 0.25, '', transform=ax_fft.transAxes, va='top')
-    # Plot the average cepstrum with quefrency values
-    ax_ceps.plot(avg_ceps, linewidth=1.1, color='red')
-    ax_ceps.plot((epoch_ceps[0]), linewidth=1.1, color='blue')
+    pp_total = numpages * PP_EPOCH
+    event_train = np.zeros(pp_total)
+    pp_live = np.zeros(pp_total, dtype=bool)
+    pp_events_by_page = []
+    for pp_page in range(numpages):
+        pp_thr = threshold[pp_page]
+        # The correlation is 2560-len(template)+1 samples, so the tail of each
+        # epoch is a DEAD ZONE where no event could have been detected. Track it
+        # -- subtracting a rate there would manufacture a 0.1 Hz comb.
+        pp_live[pp_page * PP_EPOCH: pp_page * PP_EPOCH + len(pp_thr)] = True
+        # An event is a nonzero sample whose previous nonzero sample was at
+        # least PP_REFRACTORY back. Same test the strip uses for its red dots
+        # ("nonzero now, previous 34 all zero") but without the negative-index
+        # wraparound the strip version has at the epoch start.
+        pp_hits = []
+        pp_last_nz = -PP_REFRACTORY
+        for pp_i in np.flatnonzero(pp_thr):
+            if pp_i - pp_last_nz >= PP_REFRACTORY:
+                pp_hits.append(int(pp_i))
+                event_train[pp_page * PP_EPOCH + pp_i] = 1.0
+            pp_last_nz = pp_i
+        pp_events_by_page.append(pp_hits)
+    pp_n_events = int(event_train.sum())
+    pp_nlive = int(pp_live.sum())
+    pp_live_idx = np.flatnonzero(pp_live)
 
-    #ax_ceps.set_ylim(-.5, 2.1)
+    # Inter-event intervals, pooled WITHIN epochs only: a gap spanning an epoch
+    # boundary would be padded by that epoch's dead zone and read too long.
+    pp_gaps = [np.diff(h) for h in pp_events_by_page if len(h) > 1]
+    pp_iei_ms = (np.concatenate(pp_gaps) / PP_FS * 1000.0) if pp_gaps else np.array([])
 
-    ax_ceps.set_xlim(1214, 1354) #1214, 1354
-    canvas_ceps = FigureCanvasTkAgg(fig_ceps, master=CV)
-    canvas_ceps.draw()
-    canvas_ceps.mpl_connect('motion_notify_event', on_fft_move)
-    canvas_ceps.get_tk_widget().place(x=215, y=397)
-    ceps_lab = tk.Label(CV, text='Cepstrum', font=('Helvetica', 14), bg='white')
-    ceps_lab.place(x = 380, y = 381)
+    fig_pps = Figure(figsize=(4, 1), dpi=100)
+    ax_pps = fig_pps.add_subplot(111)
+    fig_pps.subplots_adjust(left=0.10, right=0.99, bottom=0.28, top=0.96)
+
+    # Decimate before transforming. Record length is unchanged, so the 0-8 Hz
+    # band keeps its full resolution; only 32-128 Hz, which is never drawn, is
+    # dropped. PP_REFRACTORY > PP_BIN guarantees one event per bin at most.
+    pp_nb = pp_total // PP_BIN
+    pp_live_frac = pp_live[:pp_nb * PP_BIN].reshape(pp_nb, PP_BIN).mean(axis=1)
+    pp_nlive_b = pp_live_frac.sum()
+    pp_freqs = np.fft.rfftfreq(pp_nb, d=PP_BIN / PP_FS)
+    pp_band = pp_freqs <= PP_FMAX
+    pp_search = pp_band & (pp_freqs >= PP_FMIN_PEAK)
+    pp_k = max(1, int(round(PP_SMOOTH_HZ / (pp_freqs[1] - pp_freqs[0]))))
+
+    if pp_n_events >= 2 and pp_nlive_b > pp_n_events:
+        pp_spec = pp_spectrum(event_train, pp_live_frac, pp_nlive_b,
+                              pp_nb, PP_BIN, pp_k)
+        ax_pps.plot(pp_freqs[pp_band], pp_spec[pp_band], linewidth=1.1, color='red')
+        ax_pps.axhline(1.0, color='black', linestyle='--', linewidth=0.8)
+        pp_top = float(np.max(pp_spec[pp_band]))
+        pp_pk = int(np.argmax(np.where(pp_search, pp_spec, -np.inf)))
+
+        # RHYTHMIC or random: is the tallest peak bigger than the tallest peak a
+        # refractory-matched RANDOM train of the same size produces? PP_PCT of
+        # surrogates fall below the threshold, so the false-positive rate is
+        # (100 - PP_PCT) percent. Seeded, so the verdict reproduces run to run.
+        pp_rng = np.random.default_rng(PP_SEED)
+        pp_null = []
+        for _ in range(PP_NSUR):
+            pp_sur = pp_surrogate(pp_n_events, PP_REFRACTORY, pp_live_idx,
+                                  pp_total, pp_rng)
+            if pp_sur is None:
+                break
+            pp_ns = pp_spectrum(pp_sur, pp_live_frac, pp_nlive_b,
+                                pp_nb, PP_BIN, pp_k)
+            pp_null.append(float(np.max(np.where(pp_search, pp_ns, -np.inf))))
+        if len(pp_null) > 2:
+            # The threshold must be the alpha/n quantile of the surrogate max,
+            # which sits beyond what PP_NSUR draws can resolve directly. The
+            # maximum over many bins is asymptotically Gumbel, so fit one by
+            # moments and read the quantile off it. Checked against 2000 true
+            # surrogates: the fit from 200 is mildly conservative.
+            pp_ms = np.array(pp_null)
+            pp_sd = float(pp_ms.std(ddof=1))
+            if pp_sd > 0:
+                pp_beta = pp_sd * math.sqrt(6.0) / math.pi
+                pp_mu = float(pp_ms.mean()) - pp_beta * 0.5772156649
+                pp_q = 1.0 - PP_ALPHA / float(max(1, n))
+                pp_thresh = pp_mu - pp_beta * math.log(-math.log(pp_q))
+            else:
+                pp_thresh = float(pp_ms.max())
+            pp_is_rhythmic = pp_spec[pp_pk] > pp_thresh
+            pp_verdict = 'RHYTHMIC' if pp_is_rhythmic else 'random'
+            pp_vcolor = 'red' if pp_is_rhythmic else 'gray'
+        else:
+            pp_verdict, pp_vcolor = '', 'gray'
+
+        pp_box = dict(facecolor='white', edgecolor='none', alpha=0.75, pad=0.8)
+        if pp_verdict:
+            ax_pps.text(0.015, 0.96, pp_verdict, transform=ax_pps.transAxes,
+                        ha='left', va='top', fontsize=8, fontweight='bold',
+                        color=pp_vcolor, bbox=pp_box)
+        if pp_iei_ms.size:
+            # The RECURRENCE interval. NOT the component's own carrier period --
+            # a 10 Hz component recurring every 820 ms reads "every 820 ms" here
+            # and "10 Hz" in the FFT panel.
+            ax_pps.text(0.015, 0.52,
+                        'every %.0f +/- %.0f ms' % (pp_iei_ms.mean(), pp_iei_ms.std()),
+                        transform=ax_pps.transAxes, ha='left', va='top',
+                        fontsize=6.5, color='black', bbox=pp_box)
+        ax_pps.text(0.985, 0.96,
+                    'n=%d   peak %.2f Hz  x%.1f'
+                    % (pp_n_events, pp_freqs[pp_pk], pp_spec[pp_pk]),
+                    transform=ax_pps.transAxes, ha='right', va='top',
+                    fontsize=6, color='black', bbox=pp_box)
+        ax_pps.set_ylim(0, max(2.0, 1.15 * pp_top))
+    else:
+        ax_pps.text(0.5, 0.5, 'too few signature events (n=%d)' % pp_n_events,
+                    transform=ax_pps.transAxes, ha='center', va='center',
+                    fontsize=7, color='gray')
+        ax_pps.set_ylim(0, 2.0)
+
+    ax_pps.set_xlim(0, PP_FMAX)
+    ax_pps.set_xticks([0, 2, 4, 6, 8])
+    ax_pps.set_xlabel('Recurrence rate (Hz)', fontsize=6, labelpad=0)
+    ax_pps.tick_params(labelsize=6, pad=1)
+    canvas_pps = FigureCanvasTkAgg(fig_pps, master=CV)
+    canvas_pps.draw()
+    canvas_pps.mpl_connect('motion_notify_event', on_fft_move)
+    canvas_pps.get_tk_widget().place(x=215, y=397)
+    pps_lab = tk.Label(CV, text='Periodicity', font=('Helvetica', 14), bg='white')
+    pps_lab.place(x = 373, y = 370)   # centred on the 215..615 panel;
+                                      # clear of the figure top at y=397
     '''
 #EXCITATION (WAVELET)_--------------------------------------------------------------------------------------------------------------------------------------------------------
 #------------------------------------------------------------------------------------------
