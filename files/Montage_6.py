@@ -275,127 +275,165 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
           kr_user[num-1] = "Reject"
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------------      
       if selstring[12] == 1:  # or if selstring[9] == 1
-          print('BLAHHHHHHHHHHHHHH')
-          screenshots = []
-          source_regions = []
-          fft_peaks = []
-          percs = []
-          screenshots.append(icaeditfilename)
-          pdf = FPDF()
-          for idx in range(1, n+1):
-            CV, source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, peak, perc = dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list, selected_channel_reasons, channel_labels_short, myfilteredsigs, n, disp_idx=pos_of_orig[idx-1]+1)
-            CV.update()
-            fft_peaks.append(peak)
-            percs.append(perc)
+        # The cascade is a SECONDARY output. Everything below writes
+        # <edf>.imagecascade.pdf and touches no variable used after this
+        # block (comp_array is initialised fresh on the next line), so a
+        # failure here must not cost the clinical report -- which is what
+        # happened on the dev server 2026-09-24, when a matplotlib 3.10
+        # removal inside dummy_gui raised and module7 exited rc=1 with no
+        # .icale.rep.pdf at all. The traceback is printed in full so the
+        # watchdog log still shows exactly what broke.
+        try:
+            print('BLAHHHHHHHHHHHHHH')
+            screenshots = []
+            source_regions = []
+            fft_peaks = []
+            percs = []
+            screenshots.append(icaeditfilename)
+            pdf = FPDF()
+#  BRAIN PAGES: the per-component source-localization page renders through
+#  PyVista/VTK, which needs an OpenGL 3.2+ context. The AWS servers have no GPU
+#  and an RDP session offers only the GDI driver (GL 1.1), so VTK aborts the
+#  PROCESS -- a native crash Python cannot trap, taking the brain panel with it.
+#  Set CLEANEEG_NO_BRAIN=1 there to emit a cascade of component pages only.
+#  Unset (the default) keeps the full cascade on machines with real OpenGL.
+            _skip_brain = os.environ.get("CLEANEEG_NO_BRAIN", "") not in ("", "0")
+            if _skip_brain:
+                print("[CLEANEEG_NO_BRAIN set: skipping 3D source-localization pages]")
+            _pages_per_comp = 1 if _skip_brain else 2
+            for idx in range(1, n+1):
+              CV, source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, peak, perc = dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list, selected_channel_reasons, channel_labels_short, myfilteredsigs, n, disp_idx=pos_of_orig[idx-1]+1)
+              CV.update()
+              fft_peaks.append(peak)
+              percs.append(perc)
             
+              if selstring[12] == 1:
+                    screenshot = save_gui_screenshot(CV)  #if image cascade is selected
+                    screenshot_filename = os.path.join(outname, f"screenshot_{idx}.png")
+                    screenshot.save(screenshot_filename)
+                    screenshots.append(screenshot_filename)
+            
+              CV.destroy()
+              if _skip_brain:
+                  # "n/a" rather than "" so the Lobe/Region/Area parsing below,
+                  # which does item.split()[0] and item.split()[-1], still has a
+                  # token to take. Those three table columns then read n/a.
+                  source_regions.append("n/a")
+              else:
+                  screenshot_filename_brain = os.path.join(outname, f"brain_view_{idx}.png")
+                  source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring) #Pass selstring?
+                  source_regions.append(source_region)
+                  screenshots.append(screenshot_filename_brain)
+            #CREATION OF ARRAY FOR TABLE-------------------------------------------------------------------------------------------------
+            source_regions = [region.replace("'", "").replace("[", "").replace("]", "") for region in source_regions]
+            lobes = [item.split()[0] for item in source_regions]
+            #regions = [' '.join(item.split(' Lobe ')[1].split(' ')[0:-3]) for item in source_regions]
+            regions = [' '.join(item.split(' Lobe ')[1].split(' ')[0:-3]) if ' Lobe ' in item else ' '.join(item.split(' Sub-lobar ')[1].split(' ')[0:-3]) if ' Sub-lobar ' in item else '' for item in source_regions]
+            areas = [item.split()[-1] for item in source_regions]
+            components = list(range(1, n+1))
+
+            # Sort cascade pages and table rows by component % (descending) and
+            # number them by that rank, so the largest component is 1 everywhere.
+            # Reuses the `order` computed once from the mixing matrix up top --
+            # this used to recompute its own from `percs`. The two formulas agree,
+            # but now that the numbering is visible they must not be able to
+            # drift apart, or the table and the heatmap would disagree.
+            # Use _sorted-suffixed locals so we do NOT clobber the originals
+            # of max_sites / num_above_half / kr_machine / kr_user — those are
+            # consumed later by the `if selstring[9]==1` rhythm classification
+            # path (line ~418), which expects component-index ordering.
+            components_s     = list(range(1, n + 1))
+            percs_s          = [percs[i]          for i in order]
+            max_sites_s      = [max_sites[i]      for i in order]
+            num_above_half_s = [num_above_half[i] for i in order]
+            kr_machine_s     = np.array([kr_machine[i] for i in order], dtype=object)
+            kr_user_s        = np.array([kr_user[i]    for i in order], dtype=object)
+            lobes_s          = [lobes[i]          for i in order]
+            regions_s        = [regions[i]        for i in order]
+            areas_s          = [areas[i]          for i in order]
+            fft_peaks_s      = [fft_peaks[i]      for i in order]
+            # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
+            # or, with CLEANEEG_NO_BRAIN, [overview, comp_1, comp_2, ...].
+            sorted_screenshots = [screenshots[0]]
+            for orig_idx in order:
+                base = 1 + _pages_per_comp * orig_idx
+                for _k in range(_pages_per_comp):
+                    sorted_screenshots.append(screenshots[base + _k])
+            screenshots = sorted_screenshots
+
+            data_array = [components_s, percs_s, max_sites_s, num_above_half_s, kr_machine_s, kr_user_s, lobes_s, regions_s, areas_s, fft_peaks_s]
+            print(data_array)
+            #---------------------------------------------------------------------------------------------------------------------------
             if selstring[12] == 1:
-                  screenshot = save_gui_screenshot(CV)  #if image cascade is selected
-                  screenshot_filename = os.path.join(outname, f"screenshot_{idx}.png")
-                  screenshot.save(screenshot_filename)
-                  screenshots.append(screenshot_filename)
-            
+              for screenshot in screenshots:
+                image = img.open(screenshot)
+                img_w, img_h = image.size
+                image.close()
+                aspect_ratio = img_w/img_h
+                if aspect_ratio > (297/210):
+                    page_width = 297
+                    page_height = page_width/aspect_ratio
+                else:
+                    page_height = 210
+                    page_width = page_height*aspect_ratio
+                #x=(page_width)/2
+                if page_height < 210:
+                    y= 0 + np.abs((210-page_height)/2)
+                    x=0
+                else:
+                    y=0
+                    x= 0+np.abs((297-page_width)/2)
+                pdf.add_page(orientation="L")
+                pdf.image(screenshot, x=x, y=y, w=page_width, h=page_height)
+                if screenshot == screenshots[0]:
+                    pdf.add_page(orientation="L")
+                    pdf.set_font("Arial", size=10)
+                    headers =["Comp. #", "%", "Max Site", "RSI", "Machine", "User", "Lobe", "Region", 'Area', "FFT Peak"]
+                    # Convert numpy arrays to Python lists
+                    data_array = [list(col) if isinstance(col, np.ndarray) else col for col in data_array]
+
+                    # Determine the number of columns and rows
+                    num_columns = len(data_array)
+                    num_rows = len(data_array[0])  # Assumes every column has the same number of rows
+
+                    # Calculate column widths based on the maximum width between header and data
+                    column_widths = [max(pdf.get_string_width(headers[col_idx]), max(pdf.get_string_width(str(item)) for item in col_data)) + 3 for col_idx, col_data in enumerate(data_array)]
+                    # Print the headers with adjusted column widths
+                    for col_idx in range(num_columns):
+                          pdf.cell(column_widths[col_idx], 8, headers[col_idx], border=1)
+
+                    pdf.ln()
+
+                    # Fill rows with data
+                    for row_idx in range(num_rows):
+                          for col_idx in range(num_columns):
+                                pdf.cell(column_widths[col_idx], 8, str(data_array[col_idx][row_idx]), border=1)
+                          pdf.ln()           
+
+            #TABLE CREATION
+              pdf.output(img_cascade_file)  
+              for screenshot in screenshots[1:]:
+                os.remove(screenshot)
+                #image = img.open(screenshot)
+                #img_w, img_h = image.size
+                #page_width = 297
+                #page_height = img_h * (297/img_w)
+                #x=(page_width - img_w)/2
+                #y=(page_height - img_h)/2
+                #pdf.add_page(orientation="L")
+                #pdf.image(screenshot, x=x, y=y, w=page_width, h=page_height)
+                #os.remove(screenshot)
+        except Exception:
+          import traceback as _tb
+          print('*** IMAGE CASCADE FAILED -- the brain panel is still being '
+                'produced; only the cascade PDF is missing for this study ***')
+          _tb.print_exc()
+          try:
+            # A Tk component window may be left open mid-render; drop it so
+            # it cannot sit on top of anything else or block the next study.
             CV.destroy()
-            screenshot_filename_brain = os.path.join(outname, f"brain_view_{idx}.png")
-            source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring) #Pass selstring?
-            source_regions.append(source_region)
-            screenshots.append(screenshot_filename_brain)
-          #CREATION OF ARRAY FOR TABLE-------------------------------------------------------------------------------------------------
-          source_regions = [region.replace("'", "").replace("[", "").replace("]", "") for region in source_regions]
-          lobes = [item.split()[0] for item in source_regions]
-          #regions = [' '.join(item.split(' Lobe ')[1].split(' ')[0:-3]) for item in source_regions]
-          regions = [' '.join(item.split(' Lobe ')[1].split(' ')[0:-3]) if ' Lobe ' in item else ' '.join(item.split(' Sub-lobar ')[1].split(' ')[0:-3]) if ' Sub-lobar ' in item else '' for item in source_regions]
-          areas = [item.split()[-1] for item in source_regions]
-          components = list(range(1, n+1))
-
-          # Sort cascade pages and table rows by component % (descending) and
-          # number them by that rank, so the largest component is 1 everywhere.
-          # Reuses the `order` computed once from the mixing matrix up top --
-          # this used to recompute its own from `percs`. The two formulas agree,
-          # but now that the numbering is visible they must not be able to
-          # drift apart, or the table and the heatmap would disagree.
-          # Use _sorted-suffixed locals so we do NOT clobber the originals
-          # of max_sites / num_above_half / kr_machine / kr_user — those are
-          # consumed later by the `if selstring[9]==1` rhythm classification
-          # path (line ~418), which expects component-index ordering.
-          components_s     = list(range(1, n + 1))
-          percs_s          = [percs[i]          for i in order]
-          max_sites_s      = [max_sites[i]      for i in order]
-          num_above_half_s = [num_above_half[i] for i in order]
-          kr_machine_s     = np.array([kr_machine[i] for i in order], dtype=object)
-          kr_user_s        = np.array([kr_user[i]    for i in order], dtype=object)
-          lobes_s          = [lobes[i]          for i in order]
-          regions_s        = [regions[i]        for i in order]
-          areas_s          = [areas[i]          for i in order]
-          fft_peaks_s      = [fft_peaks[i]      for i in order]
-          # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
-          sorted_screenshots = [screenshots[0]]
-          for orig_idx in order:
-              sorted_screenshots.append(screenshots[1 + 2 * orig_idx])
-              sorted_screenshots.append(screenshots[2 + 2 * orig_idx])
-          screenshots = sorted_screenshots
-
-          data_array = [components_s, percs_s, max_sites_s, num_above_half_s, kr_machine_s, kr_user_s, lobes_s, regions_s, areas_s, fft_peaks_s]
-          print(data_array)
-          #---------------------------------------------------------------------------------------------------------------------------
-          if selstring[12] == 1:
-            for screenshot in screenshots:
-              image = img.open(screenshot)
-              img_w, img_h = image.size
-              image.close()
-              aspect_ratio = img_w/img_h
-              if aspect_ratio > (297/210):
-                  page_width = 297
-                  page_height = page_width/aspect_ratio
-              else:
-                  page_height = 210
-                  page_width = page_height*aspect_ratio
-              #x=(page_width)/2
-              if page_height < 210:
-                  y= 0 + np.abs((210-page_height)/2)
-                  x=0
-              else:
-                  y=0
-                  x= 0+np.abs((297-page_width)/2)
-              pdf.add_page(orientation="L")
-              pdf.image(screenshot, x=x, y=y, w=page_width, h=page_height)
-              if screenshot == screenshots[0]:
-                  pdf.add_page(orientation="L")
-                  pdf.set_font("Arial", size=10)
-                  headers =["Comp. #", "%", "Max Site", "RSI", "Machine", "User", "Lobe", "Region", 'Area', "FFT Peak"]
-                  # Convert numpy arrays to Python lists
-                  data_array = [list(col) if isinstance(col, np.ndarray) else col for col in data_array]
-
-                  # Determine the number of columns and rows
-                  num_columns = len(data_array)
-                  num_rows = len(data_array[0])  # Assumes every column has the same number of rows
-
-                  # Calculate column widths based on the maximum width between header and data
-                  column_widths = [max(pdf.get_string_width(headers[col_idx]), max(pdf.get_string_width(str(item)) for item in col_data)) + 3 for col_idx, col_data in enumerate(data_array)]
-                  # Print the headers with adjusted column widths
-                  for col_idx in range(num_columns):
-                        pdf.cell(column_widths[col_idx], 8, headers[col_idx], border=1)
-
-                  pdf.ln()
-
-                  # Fill rows with data
-                  for row_idx in range(num_rows):
-                        for col_idx in range(num_columns):
-                              pdf.cell(column_widths[col_idx], 8, str(data_array[col_idx][row_idx]), border=1)
-                        pdf.ln()           
-
-          #TABLE CREATION
-            pdf.output(img_cascade_file)  
-            for screenshot in screenshots[1:]:
-              os.remove(screenshot)
-              #image = img.open(screenshot)
-              #img_w, img_h = image.size
-              #page_width = 297
-              #page_height = img_h * (297/img_w)
-              #x=(page_width - img_w)/2
-              #y=(page_height - img_h)/2
-              #pdf.add_page(orientation="L")
-              #pdf.image(screenshot, x=x, y=y, w=page_width, h=page_height)
-              #os.remove(screenshot)
+          except Exception:
+            pass
 # HERE IS WHERE WE GET THE COMPONENT METRICS--------------------------------------------------------------------------------------------------------     
       comp_array=[]
       if selstring[9]==1:

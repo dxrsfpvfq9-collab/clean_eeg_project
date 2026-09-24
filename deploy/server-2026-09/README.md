@@ -27,7 +27,8 @@ step, for when a result looks off. This file explains what changed and why.
 | Staged file | Change | Ships |
 |---|---|---|
 | `files/edftotextbynameplotproc.py` | Global STD whitening fix | 1 hunk |
-| `files/edftotextbycommandplotproc.py` | `selstring[12] = 1` — cascade on | 1 hunk |
+| `files/edftotextbycommandplotproc.py` | `selstring[12] = 0` — module7 is the panel pass only | 1 hunk |
+| `run_cascade.py` | **new** — the cascade pass, run after the panel | new file |
 | `files/create_report_pdf.py` | `save_gui_screenshot` raises window before capture | 1 hunk |
 | `files/Montage_6.py` | Re-enable overview `savefig`; sort pages by component %; renumber components by magnitude | whole file |
 | `files/dummy_gui.py` | Head-map scale/sign fixes; Cepstrum panel replaced by Periodicity | whole file |

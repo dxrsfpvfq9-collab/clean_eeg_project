@@ -22,10 +22,12 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 |---|---|
 | `py module61.py` (via `run.bat`) | Directory + GUI mode. Production uses this. |
 | `py module7.py "<path-to-edf>"` | Single-file unattended mode. Hardcoded `selstring[6]=1`, `selstring[8]=1`. Used by `tomwatchdog.py`. |
-| `py tomwatchdog.py` | File-watcher daemon. Monitors `c:/inetpub/wwwroot/EEGScreening/Source/Practitioners` (hardcoded), spawns `module7.py` for each new EDF. |
+| `py tomwatchdog_serialized.py [<watch dir>]` | Serialized watcher used on the servers: one study at a time, waits for each upload to finish writing, 25-min kill, and runs the panel then the cascade as **two passes**. Defaults to production's watch dir; the dev server needs its own passed in. |
+| `py tomwatchdog.py` | Original file-watcher daemon. Monitors `c:/inetpub/wwwroot/EEGScreening/Source/Practitioners` (hardcoded), spawns `module7.py` for each new EDF. |
 | `py test_imagecascade.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the IMG cascade output (`selstring[12]=1`). See "IMG cascade output mode" below. |
 | `py test_plts.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the PLTS multi-page artifact-traces output (`selstring[7]=1`). See "PLTS output mode" below. |
 | `py test_discriminant.py "<path-to-edf>"` | One-off helper that mirrors module7 but also enables the discriminant variant of the report (`selstring[13]=1`). See "Discriminant report mode" below. |
+| `py run_cascade.py "<path-to-edf>"` | **Cascade only** (`selstring[12]=1`, `[8]=0`) — no report. Second pass of the server flow; the watchdog runs it after `module7.py`. |
 | `py batch_imagecascade.py "<folder>"` | Renders IMG cascades over a folder, newest-first and resumable (`--redo`, `--list`). Needs a live desktop. |
 | `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
 
@@ -92,6 +94,52 @@ dev cascade run and a dev panel-only run of the same EDF disagree on ~40
 of 48 metrics. The filter is NOT shipped to the servers, so there cascade
 and panel agree. When comparing dev output against production, always
 compare panel-mode against panel-mode.
+
+**Two-pass server flow (panel first).** `module7.py` now ships to the servers
+with `selstring[12] = 0`, so it writes ONLY the brain panel — seconds, not
+minutes. `tomwatchdog_serialized.py` then runs `run_cascade.py` as a separate
+process to add the cascade. Two reasons:
+
+- The practitioner gets the panel immediately instead of after the whole
+  cascade render (measured: panel 6 s, cascade 66 s on a short sample; a
+  full-length study is minutes for the cascade).
+- Isolation. The try/except around the cascade block only catches PYTHON
+  exceptions; a native abort (VTK/OpenGL) kills the process outright. In one
+  pass that destroyed the panel. In two, the panel is already on disk.
+
+Cost is one extra ICA + metrics pass. FastICA is seeded, so the cascade pass
+reproduces the decomposition the panel was built from — verified: all 48 metrics
+identical between a one-pass and a two-pass run of the same EDF. Set
+`CASCADE_PASS = False` in the watchdog for panel-only processing.
+
+**Brain pages need OpenGL — `CLEANEEG_NO_BRAIN=1` omits them.** Each
+component's source-localization page renders via PyVista/VTK, which needs an
+OpenGL 3.2+ context. The AWS servers have no GPU and an RDP session exposes
+only the GDI driver (GL 1.1), so VTK fails
+(`failed to get valid pixel format`, `GLEW could not be initialized`) and
+**aborts the process** — a native crash Python cannot trap, which takes the
+brain panel down with it. This had never surfaced before because the brain page
+runs only in cascade mode, disabled on the servers since Dec 2024.
+
+Set `CLEANEEG_NO_BRAIN=1` (env var, read in `Montage_6.py` at the top of the
+cascade block) to skip `dummy_brain` entirely: the cascade becomes overview +
+summary table + ONE page per component instead of two, and the table's
+Lobe/Region/Area columns read `n/a`. Verified on `raw_130399`: 40 pages -> 21,
+identical panel PDF, `dummy_brain` never entered. Default is unset, so machines
+with real OpenGL keep full cascades — do not set it on a workstation.
+
+The placeholder is the string `"n/a"`, not `""`, because the table parsing does
+`item.split()[0]` and `item.split()[-1]`, which raise on an empty string.
+
+The alternative (software OpenGL via Mesa llvmpipe, keeping the brain pages) is
+written up in `deploy/server-2026-09/MESA_OPENGL.md`; it was not pursued once
+the no-brain cascade proved sufficient.
+
+**A cascade failure no longer costs the panel** — but only for PYTHON
+exceptions. The `selstring[12]` block is wrapped in try/except: it prints the
+traceback plus `*** IMAGE CASCADE FAILED ***`, destroys any orphaned Tk window,
+and continues to the report. A native crash (VTK above) still kills everything,
+which is why the brain pages must be skipped rather than allowed to fail.
 
 **Page layout** (sorted by component % descending — largest contributor
 first, and **renumbered** so the largest is component 1; see "Component
@@ -411,6 +459,20 @@ z-scores meaningless on those rows.
   metric is not physically meaningful. Same family of bug as the
   `detect_band_with_rms` "input contract" above. Display-only;
   `mymetricsa[index, 16]` has no downstream consumers.
+- **matplotlib differs by machine, and the SERVERS are newer than dev.**
+  This workstation has 3.9.2; the dev AWS server has >= 3.10, where
+  `plt.cm.get_cmap` (deprecated 3.7) is **removed**. That crashed the first
+  server cascade at `dummy_gui.py:874`. Use `plt.get_cmap(name)`, which works
+  on every version in play. Note this inverts the old assumption under
+  "Substituting a single file into production" that production runs OLDER
+  matplotlib than dev — do not rely on that. Anything exercised only in the
+  cascade path is untested against 3.10 until it runs on a server.
+- **A cascade failure no longer costs the panel.** The `selstring[12]` block in
+  `Montage_6.py` is wrapped in try/except: it prints the traceback plus
+  `*** IMAGE CASCADE FAILED ***`, destroys any orphaned Tk window, and lets the
+  run continue to the report. Before this, any error inside cascade rendering
+  exited `module7` with rc=1 and no `.icale.rep.pdf` at all — the cascade runs
+  inside `montage_6`, well before the report is written.
 - **ICA IS deterministic.** `FastICA(..., random_state=0)` has been set
   since the `d4f522c` baseline, so re-running the same EDF on the same
   code reproduces the same metrics. Verified 2026-09-10: a dev re-run of

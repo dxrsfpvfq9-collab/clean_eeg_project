@@ -39,11 +39,14 @@ def edf_to_text_by_command_plot_proc(filepath):
     selstring = np.zeros(16)
     selstring[6] = 1
     selstring[8] = 1
-#  IMAGE CASCADE: produce <edfname>.imagecascade.pdf alongside the brain panel.
-#  Adds ~7-8 min per study (one screen-captured page per ICA component) and
-#  REQUIRES an interactive desktop session -- see the deploy README section
-#  "Screen capture". Set this to 0 to return to panel-only processing.
-    selstring[12] = 1
+#  IMAGE CASCADE: deliberately OFF here. module7.py is now the PANEL pass only,
+#  so the report reaches the practitioner in seconds instead of after the ~8 min
+#  cascade render. The watchdog runs run_cascade.py as a second pass to add
+#  <edfname>.imagecascade.pdf. Keeping them in separate processes also means a
+#  cascade failure -- including a native VTK/OpenGL abort, which Python cannot
+#  trap -- can no longer destroy the panel, because the panel is already written.
+#  Set to 1 only if you deliberately want both in one pass.
+    selstring[12] = 0
 
     print ('SELSTRING CREATED:', selstring)
     print('EXCEL FILE CHOSEN: ', excel_file_path)

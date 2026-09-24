@@ -51,6 +51,14 @@ SETTLE_POLLS = 3
 SETTLE_INTERVAL = 2.0     # seconds between size checks
 SETTLE_TIMEOUT = 300.0    # give up waiting after this long
 
+# Two-pass processing. module7.py writes the brain panel (fast, seconds), then
+# run_cascade.py adds the image cascade (~8 min). Splitting them means the panel
+# reaches the practitioner without waiting on the cascade, and a cascade that
+# dies -- including a native VTK/OpenGL abort that Python cannot trap -- can no
+# longer take the panel with it, because the panel is already on disk.
+# Set to False for panel-only processing.
+CASCADE_PASS = True
+
 # Per-study wall-clock cap. A panel alone is well under a minute; a panel plus
 # a 19-component cascade runs ~7-8 min. A study past this has hung (Tk or
 # source-localization deadlock) and is killed so one bad file cannot stall the
@@ -89,6 +97,23 @@ def _free_gb(path):
         return float("nan")
 
 
+def _run(script, path, timeout):
+    """Run one pipeline pass, killing the whole tree if it overruns."""
+    proc = subprocess.Popen([sys.executable, script, path])
+    try:
+        proc.wait(timeout=timeout or None)
+    except subprocess.TimeoutExpired:
+        print("  TIMED OUT after %ds, killing %s for:" % (timeout, script), path)
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            proc.wait(timeout=30)
+        except Exception:
+            pass
+        return "timeout"
+    return proc.returncode
+
+
 def worker():
     """Process one study at a time, forever."""
     while True:
@@ -102,18 +127,16 @@ def worker():
             print("PROCESSING:", path, " (queue depth %d, %.1f GB free)"
                   % (work_q.qsize(), free))
             started = time.time()
-            proc = subprocess.Popen([sys.executable, "module7.py", path])
-            try:
-                proc.wait(timeout=PER_FILE_TIMEOUT or None)
-            except subprocess.TimeoutExpired:
-                print("  TIMED OUT after %ds, killing:" % PER_FILE_TIMEOUT, path)
-                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"])
-                try:
-                    proc.wait(timeout=30)
-                except Exception:
-                    pass
-            print("  DONE in %ds  rc=%s  %s"
-                  % (time.time() - started, proc.returncode, path))
+
+            rc = _run("module7.py", path, PER_FILE_TIMEOUT)
+            print("  PANEL in %ds  rc=%s" % (time.time() - started, rc))
+
+            if CASCADE_PASS:
+                casc_started = time.time()
+                rc_c = _run("run_cascade.py", path, PER_FILE_TIMEOUT)
+                print("  CASCADE in %ds  rc=%s" % (time.time() - casc_started, rc_c))
+
+            print("  DONE in %ds  %s" % (time.time() - started, path))
         except Exception as exc:            # never let one study kill the worker
             print("  ERROR on", path, "->", repr(exc))
         finally:

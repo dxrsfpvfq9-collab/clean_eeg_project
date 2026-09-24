@@ -66,11 +66,18 @@ component at fixed screen resolution — so a 20-minute study costs the same as 
 | 1,000 | 14.6 GB |
 | 2,000 | 29 GB |
 | 5,000 | 73 GB |
-| 6,800 | ~100 GB — the whole current free space |
+| 6,800 | ~100 GB — the whole of production's current free space |
 
-So 1,000 cascades consume about **15 % of the 100 GB** you have free.
-Keeping a 10 GB floor, the disk holds roughly **6,100 cascades** before it
-becomes a concern. The serialized watchdog prints a `*** LOW DISK SPACE ***`
+These figures are for **production**, which has ~100 GB free: 1,000 cascades
+consume about **15 %** of it, and keeping a 10 GB floor it holds roughly
+**6,100 cascades** before this becomes a concern.
+
+The **development server is much smaller — about 4 GB free of a 29.9 GB disk**
+(confirmed 2026-09-24), i.e. room for roughly 290 cascades. That is ample for
+testing a few studies, but it is below the watchdog's 10 GB warning threshold,
+so expect a `LOW DISK SPACE` line before every study on dev. It is informational
+only and never blocks processing. Do not leave the dev watchdog running against
+a large backlog. The serialized watchdog prints a `*** LOW DISK SPACE ***`
 line before each study once free space drops under 10 GB, and keeps processing
 — the panel is the essential output and is never withheld.
 
@@ -169,7 +176,9 @@ For the first day, check three things on production:
 1. `Get-PSDrive C | Select-Object Free` — falling by ~14 MB per study, nothing
    more.
 2. The watchdog console — every upload shows `QUEUED → PROCESSING → DONE rc=0`,
-   and no `TIMED OUT` or `LOW DISK SPACE` lines.
+   and no `TIMED OUT` or `LOW DISK SPACE` lines. (On production, unlike dev,
+   a `LOW DISK SPACE` line is a real signal — it means free space is under
+   10 GB.)
 3. Open one or two of the day's cascades. Black pages mean the console session
    was lost — reconnect from dev and re-run those studies.
 

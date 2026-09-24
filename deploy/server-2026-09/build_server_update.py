@@ -113,11 +113,14 @@ CASC_OLD = """    selstring[6] = 1
 """
 CASC_NEW = """    selstring[6] = 1
     selstring[8] = 1
-#  IMAGE CASCADE: produce <edfname>.imagecascade.pdf alongside the brain panel.
-#  Adds ~7-8 min per study (one screen-captured page per ICA component) and
-#  REQUIRES an interactive desktop session -- see the deploy README section
-#  "Screen capture". Set this to 0 to return to panel-only processing.
-    selstring[12] = 1
+#  IMAGE CASCADE: deliberately OFF here. module7.py is now the PANEL pass only,
+#  so the report reaches the practitioner in seconds instead of after the ~8 min
+#  cascade render. The watchdog runs run_cascade.py as a second pass to add
+#  <edfname>.imagecascade.pdf. Keeping them in separate processes also means a
+#  cascade failure -- including a native VTK/OpenGL abort, which Python cannot
+#  trap -- can no longer destroy the panel, because the panel is already written.
+#  Set to 1 only if you deliberately want both in one pass.
+    selstring[12] = 0
 """
 patch("files/edftotextbycommandplotproc.py", CASC_OLD, CASC_NEW)
 
@@ -180,6 +183,9 @@ patch("files/create_report_pdf.py", SHOT_OLD, SHOT_NEW)
 #     one screen and BOTH cascades capture the wrong window. The replacement
 #     runs a single worker thread over a queue: one study renders at a time.
 copy_dev("tomwatchdog_serialized.py")
+
+# 2f. The cascade pass itself, invoked by the watchdog after the panel.
+copy_dev("run_cascade.py")
 
 
 # ---------------------------------------------------------------------------

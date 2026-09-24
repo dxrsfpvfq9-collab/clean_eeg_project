@@ -1182,7 +1182,10 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
 
     norm = mcolors.Normalize(vmin=np.min(bar_heights), vmax=np.max(bar_heights))
 
-    ax.bar(x_values, bar_heights, color=plt.cm.get_cmap(cmap)(norm(bar_heights)), edgecolor='black')
+    # plt.cm.get_cmap was removed in matplotlib 3.10 (deprecated since 3.7).
+    # plt.get_cmap works on every version in play here and is already used
+    # for the 'jet' map earlier in this file.
+    ax.bar(x_values, bar_heights, color=plt.get_cmap(cmap)(norm(bar_heights)), edgecolor='black')
     ax.set_xticks(range(len(channel_labels_short)))
     ax.set_xticklabels(channel_labels_short)
     
