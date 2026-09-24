@@ -59,11 +59,22 @@ SETTLE_TIMEOUT = 300.0    # give up waiting after this long
 # Set to False for panel-only processing.
 CASCADE_PASS = True
 
-# Per-study wall-clock cap. A panel alone is well under a minute; a panel plus
-# a 19-component cascade runs ~7-8 min. A study past this has hung (Tk or
-# source-localization deadlock) and is killed so one bad file cannot stall the
-# queue forever. Set to 0 to disable the cap.
-PER_FILE_TIMEOUT = 1500   # seconds (25 min)
+# Wall-clock caps, PER PASS. A study past its cap has hung (Tk deadlock, a
+# wedged render) and is killed so one bad file cannot stall the queue forever.
+# Set either to 0 to disable that cap.
+#
+# The panel is seconds of work, so a low cap here catches a genuine hang fast.
+#
+# The cascade is a different animal: it renders and screen-captures one page per
+# ICA component, and that is far slower on a small cloud VM over RDP than on a
+# workstation -- the dev server blew through 25 minutes on 2026-09-24 and was
+# killed mid-render. Because the panel is now written by a SEPARATE earlier
+# pass, a long cascade cap costs nothing: the clinical output is already on
+# disk, and the only thing at risk is the cascade itself. Raise this rather than
+# lose cascades, and watch the "CASCADE in Ns" line to learn the real number for
+# your hardware.
+PANEL_TIMEOUT = 600      # seconds (10 min)
+CASCADE_TIMEOUT = 5400   # seconds (90 min)
 
 work_q = queue.Queue()
 
@@ -128,12 +139,12 @@ def worker():
                   % (work_q.qsize(), free))
             started = time.time()
 
-            rc = _run("module7.py", path, PER_FILE_TIMEOUT)
+            rc = _run("module7.py", path, PANEL_TIMEOUT)
             print("  PANEL in %ds  rc=%s" % (time.time() - started, rc))
 
             if CASCADE_PASS:
                 casc_started = time.time()
-                rc_c = _run("run_cascade.py", path, PER_FILE_TIMEOUT)
+                rc_c = _run("run_cascade.py", path, CASCADE_TIMEOUT)
                 print("  CASCADE in %ds  rc=%s" % (time.time() - casc_started, rc_c))
 
             print("  DONE in %ds  %s" % (time.time() - started, path))

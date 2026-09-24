@@ -24,7 +24,7 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
 | `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
 | `run_cascade.py` | project folder | 2661 |
-| `tomwatchdog_serialized.py` | project folder | 7384 |
+| `tomwatchdog_serialized.py` | project folder | 8001 |
 
 "Project folder" is the directory containing `module7.py` — on the development
 server that is `C:pp\MyCleanEEG\CleanEEGProject`.
@@ -100,6 +100,20 @@ Then check, next to the EDF:
 
 That is the whole deployment. Production is identical, with the watchdog started
 with no argument, in the console session kept logged in from the dev server.
+
+## How long a study takes
+
+The panel is seconds. The cascade is minutes to tens of minutes, and it is much
+slower on a cloud VM over Remote Desktop than on a workstation — the dev server
+exceeded 25 minutes on one study. The watchdog allows the cascade 90 minutes
+(`CASCADE_TIMEOUT`) and the panel 10 (`PANEL_TIMEOUT`); a pass past its cap is
+killed so one bad study cannot stall the queue.
+
+Watch the `CASCADE in Ns` line on the first few studies to learn the real number
+for that machine. If cascades take longer than studies arrive, the queue grows
+without bound — panels keep flowing regardless, because they are the first pass,
+but cascades will fall behind. If that happens, set `CASCADE_PASS = False` and
+render cascades on a workstation with `batch_imagecascade.py` instead.
 
 ## If something is wrong
 
