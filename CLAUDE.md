@@ -52,7 +52,7 @@ py -m pytest -v
 
 The Dropbox folder `c:/Users/tcollura/Dropbox/STS EEG Quality Assurance
 Reviews/` holds additional reference PDFs from production (e.g.
-`Dennis C 02.000.02 AGE 74 EC.icale.rep.pdf`).
+the `.icale.rep.pdf` of QA study C (02.000.02, age 74, EC)).
 
 ## IMG cascade output mode
 
@@ -173,7 +173,7 @@ selector's button grid. Largest is 1.
 
 Display only. The arrays keep FastICA's ordering, so the reconstruction
 (`ica_components[:, compint] = 0`) and every metric are untouched —
-verified by a panel-only before/after on `1419 Oliver Y. EC`, identical
+verified by a panel-only before/after on `QA study B (EC)`, identical
 on all 48 rows. `icabutton[]` stays keyed by the ORIGINAL index because
 `icabutton[orig-1]` is looked up in five places (`Montage_6` ~200/227 and
 `icabutton_callback`, `Component_selector` ~258/284); only the label and
@@ -489,7 +489,7 @@ z-scores meaningless on those rows.
 - **ICA IS deterministic.** `FastICA(..., random_state=0)` has been set
   since the `d4f522c` baseline, so re-running the same EDF on the same
   code reproduces the same metrics. Verified 2026-09-10: a dev re-run of
-  `1412 Grace SL EC` reproduced the production server's panel on 47 of
+  `QA study A (EC)` reproduced the production server's panel on 47 of
   48 metrics to printed precision (the 48th being the Global STD fix).
   An earlier note here claimed the seed was unset — it was wrong.
 

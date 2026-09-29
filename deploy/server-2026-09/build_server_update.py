@@ -85,7 +85,7 @@ def copy_bin(relpath):
 # under the pre-1.3 default (arbitrary, data-dependent source variance), where
 # the metric lands at ~2.5.
 #
-# Verified on 1412 Grace SL EC: 47 of 48 metrics reproduce the production
+# Verified on QA study A (EC): 47 of 48 metrics reproduce the production
 # report to printed precision; Global STD alone changes,
 # 1000.00 (z 2642.71) -> 2.54 (z -0.53), inside the 1.91-3.42 normal range.
 GSTD_OLD = "       ica = FastICA(n_components=n, max_iter = 1000, random_state=0)"
@@ -116,7 +116,7 @@ patch("files/edftotextbynameplotproc.py", GSTD_OLD, GSTD_NEW)
 # NOTE ON THE PRE-ICA LINE FILTER: the dev tree applies lp50+notch60 before ICA
 # whenever selstring[12]==1. That filter is deliberately NOT ported. It changes
 # the ICA decomposition, and montage 6 rebuilds the report signals FROM that
-# decomposition, so it moves the panel: measured on 1412 Grace SL EC, 39 of 48
+# decomposition, so it moves the panel: measured on QA study A (EC), 39 of 48
 # z-scores shifted, several past 2 sigma (Beta Max Front +3.21, PDR Max Post.
 # +2.58, Front Alpha Asym -2.00). That would silently invalidate every
 # comparison against EC_191. Leaving it out keeps the panel numerically

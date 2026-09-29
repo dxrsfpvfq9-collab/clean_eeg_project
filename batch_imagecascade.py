@@ -36,7 +36,7 @@ MIN_FREE_GB = 10.0
 # Per-file wall-clock cap. A real cascade renders in ~1.5-13 min; a file that
 # exceeds this has hung (Tk/ImageGrab or source-localization deadlock) and is
 # killed so ONE bad file can't freeze the whole unattended batch (this happened
-# on '1345 Sarya T ... EO' -- stalled 38 h). 0 disables (in-process, no cap).
+# on 'QA study D (EO)' -- stalled 38 h). 0 disables (in-process, no cap).
 PER_FILE_TIMEOUT = 1500  # seconds (25 min)
 
 _PROJ_ROOT = os.path.dirname(os.path.abspath(__file__))

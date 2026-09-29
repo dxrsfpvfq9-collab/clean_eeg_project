@@ -19,7 +19,7 @@ def test_codes_and_technical_terms_kept():
 
 def test_dotted_and_hyphenated_names():
     assert d("9998 Taylor B. EC") == "9998 ###### #. EC"
-    assert d("Sara B EC.RECON") == "#### # EC.RECON"
+    assert d("Lena B EC.RECON") == "#### # EC.RECON"
     assert d("9996-Morgan EO") == "9996-###### EO"
 
 

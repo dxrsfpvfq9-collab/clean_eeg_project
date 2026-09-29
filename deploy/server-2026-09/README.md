@@ -63,7 +63,7 @@ hence the z of 2642.
 < 1.3; the code picks the right spelling at runtime, so it is safe whatever the
 server has installed).
 
-**Evidence.** `1412 Grace SL 01.000.02 AGE 34 EC`, dev re-run against the
+**Evidence.** `QA study A (01.000.02, age 34, EC)`, dev re-run against the
 server's own panel PDF for that study:
 
 | | production | after fix |
@@ -153,7 +153,7 @@ The dev tree applies an `lp50 + notch60` filter before ICA whenever
 `selstring[12] == 1`, to stop 60 Hz interference from eating ICA components.
 **It must not go to production.** Montage 6 rebuilds the report signals *from*
 the ICA decomposition, so filtering before ICA moves the panel itself. Measured
-on `1412 Grace SL EC`, filtered vs unfiltered:
+on `QA study A (EC)`, filtered vs unfiltered:
 
 | | rows whose z moved > 0.01 |
 |---|---|
@@ -257,18 +257,18 @@ The staged `mne_data/` is git-ignored (the repo-wide `mne_data/` rule);
 
 **This section predates Change 3.** The end-to-end run below exercised the
 Global STD fix and the cascade, not the Periodicity panel or the renumbering.
-Those were checked separately — a full panel re-run on `1419 Oliver Y. EC`
+Those were checked separately — a full panel re-run on `QA study B (EC)`
 produced 48 of 48 rows identical — but re-run `verify_panel.py` on the dev
 server once the rebuilt bundle is in place, so one run covers everything.
 
 The staged tree was tested end-to-end before hand-off: a copy of the production
 source with `staged/` overlaid, driven through `module7.py` exactly as the
-watchdog drives it, on `1412 Grace SL 01.000.02 AGE 34 EC` — a study the server
+watchdog drives it, on `QA study A (01.000.02, age 34, EC)` — a study the server
 had already processed.
 
 - Panel: `PASS: only Global STD changed.` All 47 other metrics identical to the
   server's own PDF.
-- Cascade: `GraceEC.imagecascade.pdf`, 13.6 MB, produced in the same run;
+- Cascade: the study's `.imagecascade.pdf`, 13.6 MB, produced in the same run;
   `.ica.png` written (the `savefig` fix) and the per-component temp PNGs
   cleaned up afterwards.
 - Runtime: ~6 minutes for panel + cascade on this study.
