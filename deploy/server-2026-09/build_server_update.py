@@ -49,12 +49,22 @@ def write(relpath, text, crlf):
     print("  staged  " + relpath)
 
 
-def patch(relpath, old, new):
-    """Apply one exact-text replacement to the production copy of relpath."""
-    text, crlf = read(os.path.join(PROD, relpath.replace("/", os.sep)))
+def patch(relpath, old, new, base="prod"):
+    """Apply one exact-text replacement to relpath.
+
+    base="prod" (default) patches the production source -- use it for the FIRST
+    hunk in a file. base="staged" patches what is already staged, so several
+    hunks can accumulate in one file; patching from prod each time would discard
+    the previous hunk.
+    """
+    root = PROD if base == "prod" else STAGED
+    text, crlf = read(os.path.join(root, relpath.replace("/", os.sep)))
+    if base == "staged":
+        # The staged copy already carries production's line endings.
+        crlf = read(os.path.join(PROD, relpath.replace("/", os.sep)))[1]
     if text.count(old) != 1:
-        sys.exit("ANCHOR not found exactly once in %s (%d matches)"
-                 % (relpath, text.count(old)))
+        sys.exit("ANCHOR not found exactly once in %s [%s] (%d matches)"
+                 % (relpath, base, text.count(old)))
     write(relpath, text.replace(old, new, 1), crlf)
 
 
@@ -190,6 +200,38 @@ SHOT_NEW = """def save_gui_screenshot(window):
     window.update()
 """
 patch("files/create_report_pdf.py", SHOT_OLD, SHOT_NEW)
+
+# 2g. Restore the COLOUR CODING on the page-3 FFT peak-frequency labels. Each
+#     channel's spectrum is drawn in the next colour of the cycle, and the
+#     Alpha1 / Alpha / Alpha2 numbers printed for that channel are meant to
+#     carry the same colour, so a reader can tie a number to its trace. The
+#     production baseline passes no `color=`, so every number renders black and
+#     the association is lost.
+#
+#     This is a two-part hunk: capture the Line2D returned by ax.plot and read
+#     its colour, then pass that colour to each of the four text calls. Colour
+#     only -- the dev tree also repositions these labels into axes-relative
+#     coordinates, and that is deliberately NOT ported, so the page keeps the
+#     layout the servers have always produced.
+COLOR_OLD = """        ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)"""
+COLOR_NEW = """        # Keep the Line2D so the peak-frequency numbers below can be printed in
+        # the same colour as this channel's spectrum -- that colour is the only
+        # thing tying a number to its trace.
+        line, = ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        line_color = line.get_color()"""
+patch("files/create_report_pdf.py", COLOR_OLD, COLOR_NEW, base="staged")
+
+for _old, _new in [
+    ("        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500",
+     "        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17, color=line_color)   #-1000, + 500"),
+    ("            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)",
+     "            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17, color=line_color)"),
+    ("            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)",
+     "            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17, color=line_color)"),
+    ("            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)",
+     "            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17, color=line_color)"),
+]:
+    patch("files/create_report_pdf.py", _old, _new, base="staged")
 
 # 2e. Serialize the watchdog. Today it fires subprocess.Popen per upload with
 #     no limit. Panel-only, concurrent studies merely compete for CPU; with
