@@ -18,13 +18,13 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | Copy this | Into | Bytes |
 |---|---|---|
 | `files\Component_selector.py` | project `files\` | 61752 |
-| `files\Montage_6.py` | project `files\` | 53752 |
+| `files\Montage_6.py` | project `files\` | 53766 |
 | `files\deidentify.py` | project `files\` | 3967 |
 | `files\create_report_pdf.py` | project `files\` | 57227 |
-| `files\dummy_gui.py` | project `files\` | 55607 |
+| `files\dummy_gui.py` | project `files\` | 55632 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
 | `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
-| `process\brain_render.py` | project `process\` | 20737 |
+| `process\brain_render.py` | project `process\` | 21032 |
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
 | `run_cascade.py` | project folder | 2661 |
 | `tomwatchdog_serialized.py` | project folder | 8001 |

@@ -325,7 +325,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                   source_regions.append("n/a")
               else:
                   screenshot_filename_brain = os.path.join(outname, f"brain_view_{idx}.png")
-                  source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring, title=f"Component {pos_of_orig[idx-1]+1} — Source Localization")
+                  source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring, title=f"Component {pos_of_orig[idx-1]+1} — Source Localization", label=tlabel)
                   source_regions.append(source_region)
                   screenshots.append(screenshot_filename_brain)
             #CREATION OF ARRAY FOR TABLE-------------------------------------------------------------------------------------------------

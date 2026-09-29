@@ -349,10 +349,13 @@ def _draw_slice(ax, vol, lo, thr, surf, axis, peak, dip, title, hlab, vlab):
 
 # --------------------------------------------------------------------- page
 def render_source_page(source_point, location_matrix, max_value, max_index,
-                       reshaped_list, voxel_csd, out_png, title=None, dpi=120):
+                       reshaped_list, voxel_csd, out_png, title=None, label=None, dpi=120):
     """Write the source-localization page for one ICA component to `out_png`.
 
     Arguments are exactly what dummy_gui() returns / dummy_brain() receives.
+    `label` is the small study line printed at the top of the other cascade
+    pages ("BMrICA: <de-identified file name> <date>"); pass it already
+    de-identified -- it is drawn as given.
     """
     vox = np.asarray(location_matrix[:, 0:3], dtype=float)
     csd = np.asarray(voxel_csd, dtype=float)
@@ -374,15 +377,17 @@ def render_source_page(source_point, location_matrix, max_value, max_index,
 
     fig = plt.Figure(figsize=(14.85, 10.5), dpi=dpi, facecolor='white')
     FigureCanvasAgg(fig)
-    gs = GridSpec(3, 4, figure=fig, left=0.015, right=0.985, top=0.905, bottom=0.02,
+    gs = GridSpec(3, 4, figure=fig, left=0.015, right=0.985, top=0.89, bottom=0.02,
                   wspace=0.04, hspace=0.12, width_ratios=[1, 1, 1, 0.92],
                   height_ratios=[1, 1, 1.05])
 
     lobe, region, area = (list(source_point[3:6]) + ['', '', ''])[:3]
     hemi = 'Left hemisphere' if peak[0] < 0 else ('Right hemisphere' if peak[0] > 0 else 'Midline')
-    fig.text(0.015, 0.965, title or 'Source Localization', fontsize=18, fontweight='bold',
+    if label:
+        fig.text(0.015, 0.99, label, fontsize=9, color='#222', va='top')
+    fig.text(0.015, 0.955, title or 'Source Localization', fontsize=18, fontweight='bold',
              color='#1a1a1a', va='center')
-    fig.text(0.015, 0.93, f'sLORETA current density  —  peak: {lobe}, {region}, {area}',
+    fig.text(0.015, 0.922, f'sLORETA current density  —  peak: {lobe}, {region}, {area}',
              fontsize=12.5, color='#333', va='center')
 
     for i, r in enumerate(geom['views']):
