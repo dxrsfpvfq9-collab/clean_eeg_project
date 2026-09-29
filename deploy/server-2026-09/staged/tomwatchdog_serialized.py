@@ -73,8 +73,14 @@ CASCADE_PASS = True
 # disk, and the only thing at risk is the cascade itself. Raise this rather than
 # lose cascades, and watch the "CASCADE in Ns" line to learn the real number for
 # your hardware.
-PANEL_TIMEOUT = 600      # seconds (10 min)
-CASCADE_TIMEOUT = 5400   # seconds (90 min)
+#
+# Site note: this server receives well under one study per day, so nothing ever
+# queues behind a slow cascade. The cascade cap is therefore set well above the
+# observed runtime (~80 min for 19 components on the dev VM) -- it is there to
+# catch a genuine hang, not to ration throughput, and losing 80 minutes of
+# finished work to a cap that was merely tight would be the worse failure.
+PANEL_TIMEOUT = 600       # seconds (10 min)
+CASCADE_TIMEOUT = 14400   # seconds (4 h)
 
 work_q = queue.Queue()
 
