@@ -291,12 +291,11 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             percs = []
             screenshots.append(icaeditfilename)
             pdf = FPDF()
-#  BRAIN PAGES: the per-component source-localization page renders through
-#  PyVista/VTK, which needs an OpenGL 3.2+ context. The AWS servers have no GPU
-#  and an RDP session offers only the GDI driver (GL 1.1), so VTK aborts the
-#  PROCESS -- a native crash Python cannot trap, taking the brain panel with it.
-#  Set CLEANEEG_NO_BRAIN=1 there to emit a cascade of component pages only.
-#  Unset (the default) keeps the full cascade on machines with real OpenGL.
+#  BRAIN PAGES: rendered by process/brain_render.py (numpy + matplotlib, no
+#  OpenGL), so they now work on the GPU-less AWS servers too. The old
+#  PyVista/VTK page (CLEANEEG_BRAIN_RENDER=vtk) needs OpenGL 3.2+ and ABORTS
+#  the process there -- a native crash Python cannot trap.
+#  CLEANEEG_NO_BRAIN=1 still omits the brain pages entirely.
             _skip_brain = os.environ.get("CLEANEEG_NO_BRAIN", "") not in ("", "0")
             if _skip_brain:
                 print("[CLEANEEG_NO_BRAIN set: skipping 3D source-localization pages]")
@@ -321,7 +320,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                   source_regions.append("n/a")
               else:
                   screenshot_filename_brain = os.path.join(outname, f"brain_view_{idx}.png")
-                  source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring) #Pass selstring?
+                  source_region = dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, screenshot_filename_brain, selstring, title=f"Component {pos_of_orig[idx-1]+1} — Source Localization")
                   source_regions.append(source_region)
                   screenshots.append(screenshot_filename_brain)
             #CREATION OF ARRAY FOR TABLE-------------------------------------------------------------------------------------------------

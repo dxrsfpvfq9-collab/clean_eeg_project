@@ -896,7 +896,17 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     
 # OUT OF ComponentViewer FUNCTION ----------------------------------------------------------------------------------------------------------------------------------------------
 
-def dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, sceenshot_filename, selstring):
+def dummy_brain(source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, sceenshot_filename, selstring, title=None):
+    # Default: the OpenGL-free page (process/brain_render.py) -- fsaverage cortex
+    # rasterised in numpy, drawn with matplotlib Agg. Runs on the GPU-less AWS
+    # servers, where the VTK path below aborts the process.
+    # CLEANEEG_BRAIN_RENDER=vtk restores the original PyVista 3x3 grid.
+    if os.environ.get("CLEANEEG_BRAIN_RENDER", "").lower() != "vtk":
+        if selstring[12] == 1:
+            from process.brain_render import render_source_page
+            render_source_page(source_point, location_matrix, max_value, max_index,
+                               reshaped_list, voxel_csd, sceenshot_filename, title=title)
+        return str(source_point[3:])
     # Convert voxel coordinates to numeric values--------------------------------------------------------------------------------------------------------------------------------
     voxel_coordinates = np.array(location_matrix[:, 0:3], dtype=float)
     #print(voxel_coordinates)

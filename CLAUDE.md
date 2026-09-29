@@ -112,7 +112,20 @@ reproduces the decomposition the panel was built from — verified: all 48 metri
 identical between a one-pass and a two-pass run of the same EDF. Set
 `CASCADE_PASS = False` in the watchdog for panel-only processing.
 
-**Brain pages need OpenGL — `CLEANEEG_NO_BRAIN=1` omits them.** Each
+**Brain pages no longer need OpenGL (default renderer).** `dummy_brain` now
+calls `process/brain_render.py`: the fsaverage pial surface is rasterised by a
+numpy z-buffer (geometry built once per process, ~6 s; ~1 s per component
+after) and drawn with matplotlib Agg — six cortical views (L/R lateral, L/R
+medial, dorsal, ventral), three orthogonal slices through the peak voxel with
+pial/white outlines and the dipole arrow, and an info column. The display
+threshold is adaptive (87th percentile of voxel CSD, floor 50% of peak),
+because on real components half the grid is often >= 50% of peak. Surfaces
+are read directly (mne.read_surface needs nibabel, not installed). Display
+only — same voxel CSD, same returned region string, no metric change.
+`CLEANEEG_BRAIN_RENDER=vtk` restores the old PyVista page, to which the
+paragraphs below still apply.
+
+**The VTK brain page needs OpenGL — `CLEANEEG_NO_BRAIN=1` omits them.** Each
 component's source-localization page renders via PyVista/VTK, which needs an
 OpenGL 3.2+ context. The AWS servers have no GPU and an RDP session exposes
 only the GDI driver (GL 1.1), so VTK fails
