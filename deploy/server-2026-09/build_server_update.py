@@ -208,11 +208,20 @@ patch("files/create_report_pdf.py", SHOT_OLD, SHOT_NEW)
 #     production baseline passes no `color=`, so every number renders black and
 #     the association is lost.
 #
-#     This is a two-part hunk: capture the Line2D returned by ax.plot and read
-#     its colour, then pass that colour to each of the four text calls. Colour
-#     only -- the dev tree also repositions these labels into axes-relative
-#     coordinates, and that is deliberately NOT ported, so the page keeps the
-#     layout the servers have always produced.
+#     Two hunks. First capture the Line2D returned by ax.plot and read its
+#     colour. Then replace the whole legend block with the dev version, which
+#     also moves the labels and the three alpha-peak rails into AXES-RELATIVE
+#     coordinates (0..1). In the production code their y positions are data
+#     coordinates (y_min + 900 + 30*j), so on a loud spectrum the block drifts
+#     up out of the panel and on a quiet one it collides with the traces. In
+#     axes coordinates they sit in the same visual place whatever the
+#     amplitude. The peak tick marks use a blended transform -- data x, so a
+#     tick still lines up with its frequency, axes y, so it stays at a fixed
+#     height. Font drops 17 -> 14 to match the dev layout the block was tuned
+#     for.
+#
+#     The block is extracted verbatim from both trees rather than retyped, so
+#     it cannot drift from what dev actually renders.
 COLOR_OLD = """        ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)"""
 COLOR_NEW = """        # Keep the Line2D so the peak-frequency numbers below can be printed in
         # the same colour as this channel's spectrum -- that colour is the only
@@ -221,17 +230,101 @@ COLOR_NEW = """        # Keep the Line2D so the peak-frequency numbers below can
         line_color = line.get_color()"""
 patch("files/create_report_pdf.py", COLOR_OLD, COLOR_NEW, base="staged")
 
-for _old, _new in [
-    ("        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500",
-     "        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17, color=line_color)   #-1000, + 500"),
-    ("            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)",
-     "            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17, color=line_color)"),
-    ("            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)",
-     "            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17, color=line_color)"),
-    ("            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)",
-     "            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17, color=line_color)"),
-]:
-    patch("files/create_report_pdf.py", _old, _new, base="staged")
+LEGEND_OLD = """        
+        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500
+
+        tstring = "Alpha1:"
+        ax.text(start-10, y_min + 930, tstring)  
+        tstring = "Alpha:"
+        ax.text(start-10, y_min + 950, tstring)
+        tstring = "Alpha2:"
+        ax.text(start-10, y_min + 970, tstring)
+
+        if peak_index != 0:
+            value=(7*10+peak_index)/10
+            tstringv = f"{value:.1f}"
+            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)
+            ax.plot([start+7*40+4*peak_index, start+7*40+4*peak_index], [y_min+950, y_min+965], color = "Black", linewidth=1.0)
+        else:
+            value = 0
+        #print('Val: ', value)
+        if peak_indexl != 0:
+            valuel=(7*10+peak_indexl)/10
+            tstringl = f"{valuel:.1f}"
+            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)
+            ax.plot([start+7*40+4*peak_indexl, start+7*40+4*peak_indexl], [y_min+930, y_min+945], color = "Black", linewidth=1.0)
+        else:
+            valuel = 0
+        #print('low Peak: ', valuel)
+        if peak_indexh != 0:
+            valueh=(10*10+peak_indexh)/10
+            tstringh = f"{valueh:.1f}"
+            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)
+            ax.plot([start+10*40+4*peak_indexh, start+10*40+4*peak_indexh], [y_min+970, y_min+985], color = "Black", linewidth=1.0)
+        else:
+            valueh = 0
+"""
+LEGEND_NEW = """
+        # Position the per-channel peak-frequency legend in AXES-relative
+        # coordinates (0..1) so the layout is independent of the FFT
+        # amplitude — labels always render at the same visual location
+        # regardless of how loud the spectrum is. The numbers below were
+        # chosen to reproduce the production reference layout (compact
+        # upper-right block, ~14pt-equivalent text).
+        label_top = 0.94
+        label_bottom = 0.55
+        label_spacing = (label_top - label_bottom) / max(n - 1, 1)
+        label_y = label_top - label_spacing * j
+        label_fontsize = 14
+
+        ax.text(0.60, label_y, tstring1, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+
+        # "Alpha1:/Alpha:/Alpha2:" column labels for the three peak-marker
+        # rails. Use axes-relative coords so they sit at a fixed visible
+        # position regardless of FFT amplitude. Drawn inside the j-loop
+        # (redundantly), each iteration overlays the same text at the same
+        # spot — wasteful but harmless.
+        marker_y_low  = 0.85   # Alpha1 (low-alpha peak) rail center
+        marker_y_mid  = 0.90   # Alpha   (mid-alpha peak) rail center
+        marker_y_high = 0.95   # Alpha2  (high-alpha peak) rail center
+        marker_half_h = 0.018  # half-height of each tick mark in axes-y
+        marker_label_fontsize = 12
+        # blended transform: data-X (so ticks line up with spectrum freq),
+        # axes-Y (so they stay at a fixed visible height).
+        marker_trans = ax.get_xaxis_transform()
+
+        ax.text(0.01, marker_y_low,  "Alpha1:", fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_mid,  "Alpha:",  fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_high, "Alpha2:", fontsize=marker_label_fontsize, transform=ax.transAxes)
+
+        if peak_index != 0:
+            value=(7*10+peak_index)/10
+            tstringv = f"{value:.1f}"
+            ax.text(0.80, label_y, tstringv, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peak = start+7*40+4*peak_index
+            ax.plot([x_peak, x_peak], [marker_y_mid - marker_half_h, marker_y_mid + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            value = 0
+        #print('Val: ', value)
+        if peak_indexl != 0:
+            valuel=(7*10+peak_indexl)/10
+            tstringl = f"{valuel:.1f}"
+            ax.text(0.72, label_y, tstringl, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakl = start+7*40+4*peak_indexl
+            ax.plot([x_peakl, x_peakl], [marker_y_low - marker_half_h, marker_y_low + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            valuel = 0
+        #print('low Peak: ', valuel)
+        if peak_indexh != 0:
+            valueh=(10*10+peak_indexh)/10
+            tstringh = f"{valueh:.1f}"
+            ax.text(0.88, label_y, tstringh, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakh = start+10*40+4*peak_indexh
+            ax.plot([x_peakh, x_peakh], [marker_y_high - marker_half_h, marker_y_high + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            valueh = 0
+"""
+patch("files/create_report_pdf.py", LEGEND_OLD, LEGEND_NEW, base="staged")
 
 # 2e. Serialize the watchdog. Today it fires subprocess.Popen per upload with
 #     no limit. Panel-only, concurrent studies merely compete for CPU; with
