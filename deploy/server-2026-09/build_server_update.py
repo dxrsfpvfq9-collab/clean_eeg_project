@@ -15,10 +15,16 @@ nothing else.
   3. Cascade display work    -> files/Montage_6.py
      (Periodicity panel,        files/dummy_gui.py
       component renumbering)    files/Component_selector.py
+  4. OpenGL-free brain pages -> process/brain_render.py
+                                mne_data/.../fsaverage/surf/{lh,rh}.{pial,white,sulc}
+
+Also rewrites SHA256SUMS.txt from what it staged.
 
 Run:  py deploy/server-2026-09/build_server_update.py
 """
+import hashlib
 import os
+import shutil
 import sys
 
 PROD = r"C:\BrainPanel\CleanEEGProject - production"
@@ -58,6 +64,14 @@ def copy_dev(relpath, dev_relpath=None):
     prod_path = os.path.join(PROD, relpath.replace("/", os.sep))
     crlf = read(prod_path)[1] if os.path.exists(prod_path) else True
     write(relpath, text, crlf)
+
+
+def copy_bin(relpath):
+    """Byte-for-byte copy from dev (binary data: no line-ending handling)."""
+    out = os.path.join(STAGED, relpath.replace("/", os.sep))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    shutil.copyfile(os.path.join(DEV, relpath.replace("/", os.sep)), out)
+    print("  staged  " + relpath)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +202,27 @@ copy_dev("tomwatchdog_serialized.py")
 copy_dev("run_cascade.py")
 
 
+# 2g. Brain pages WITHOUT OpenGL. dummy_brain (in the dummy_gui.py staged
+#     above) now draws the source-localization page through
+#     process/brain_render.py -- numpy + matplotlib Agg -- instead of
+#     PyVista/VTK, which aborts the process on the GPU-less AWS servers. That is
+#     what CLEANEEG_NO_BRAIN=1 existed to avoid; with this shipped it should be
+#     UNSET (or 0) on the servers so the brain pages come back.
+#     Imports only numpy/scipy/matplotlib, which the pipeline already needs.
+copy_dev("process/brain_render.py")
+
+#     The renderer draws the fsaverage cortex from these six FreeSurfer surfaces
+#     (~25 MB), read relative to the project root. The workstation mirrors of
+#     both servers already carry them, byte-identical to dev -- the old
+#     interactive viewer reads lh/rh.white -- but they are shipped anyway so the
+#     brain pages do not depend on that. A missing surface fails the cascade
+#     (a Python exception, caught) and never the panel.
+SURF = "mne_data/MNE-fsaverage-data/fsaverage/surf/"
+for _h in ("lh", "rh"):
+    for _kind in ("pial", "white", "sulc"):
+        copy_bin(SURF + _h + "." + _kind)
+
+
 # ---------------------------------------------------------------------------
 # OPTIONAL -- numpy version insurance (staged separately, deploy only if needed)
 # ---------------------------------------------------------------------------
@@ -214,6 +249,27 @@ _opt = STAGED
 STAGED = os.path.join(HERE, "staged-optional")
 copy_dev("process/detect_artifact.py")
 STAGED = _opt
+
+
+# ---------------------------------------------------------------------------
+# SHA256SUMS.txt -- what verify_copy.ps1 (and apply_local.ps1) check against
+# ---------------------------------------------------------------------------
+rows = []
+for tree in ("staged", "staged-optional"):
+    base = os.path.join(HERE, tree)
+    for dirpath, _dirs, files in os.walk(base):
+        if "__pycache__" in dirpath:
+            continue
+        for name in files:
+            full = os.path.join(dirpath, name)
+            rel = tree + "/" + os.path.relpath(full, base).replace(os.sep, "/")
+            with open(full, "rb") as fh:
+                rows.append((rel, hashlib.sha256(fh.read()).hexdigest()))
+rows.sort(key=lambda r: (r[0].startswith("staged-optional/"), r[0].lower()))
+with open(os.path.join(HERE, "SHA256SUMS.txt"), "w", newline="\n") as fh:
+    for rel, digest in rows:
+        fh.write(digest + " " + rel + "\n")
+print("  wrote   SHA256SUMS.txt (%d files)" % len(rows))
 
 print("\nStaged tree:          " + STAGED)
 print("Optional (numpy>=2):  " + os.path.join(HERE, "staged-optional"))

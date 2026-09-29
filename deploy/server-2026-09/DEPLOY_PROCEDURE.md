@@ -48,14 +48,18 @@ copy them by hand.
 
 ## Disk space — can the site hold 1,000+ cascades?
 
-Yes, comfortably. Measured on the seven cascades rendered for this work:
+Yes, comfortably. Measured with the OpenGL-free brain pages (2026-09-29,
+`raw_130399`, 19 components):
 
 | Per study | Size |
 |---|---|
-| `.imagecascade.pdf` | 12.5 – 14.2 MB |
+| `.imagecascade.pdf` | ~21 MB |
 | `.ica.png` (overview, left behind) | 0.2 – 0.4 MB |
-| **Added per study** | **13.6 MB mean, 14.6 MB max** |
-| Transient during render (19 PNG captures, deleted at the end) | ~12 MB |
+| **Added per study** | **~21 MB** |
+| Transient during render (38 PNG captures, deleted at the end) | ~30 MB |
+
+(The earlier figure of 13.6 MB was measured with the old VTK brain pages; the
+new ones are larger, ~0.8 MB each.)
 
 Size is set by channel count, not recording length — one page pair per ICA
 component at fixed screen resolution — so a 20-minute study costs the same as a
@@ -63,14 +67,21 @@ component at fixed screen resolution — so a 20-minute study costs the same as 
 
 | Studies | Space used (max per study) |
 |---|---|
-| 1,000 | 14.6 GB |
-| 2,000 | 29 GB |
-| 5,000 | 73 GB |
-| 6,800 | ~100 GB — the whole of production's current free space |
+| 1,000 | ~21 GB |
+| 2,000 | ~42 GB |
+| 5,000 | ~105 GB |
+| 9,000 | ~190 GB — about the whole of production's data disk |
 
-These figures are for **production**, which has ~100 GB free: 1,000 cascades
-consume about **15 %** of it, and keeping a 10 GB floor it holds roughly
-**6,100 cascades** before this becomes a concern.
+These figures are for **production**, which has **~200 GB on a separate data
+disk**: 1,000 cascades use about **11 %** of it, and keeping a 10 GB floor it
+holds roughly **9,000 cascades**.
+
+**Check which disk the cascades actually land on.** They are written next to
+the uploaded EDF, and production's watch folder is
+`c:/inetpub/wwwroot/EEGScreening/...` — a C: path. The 200 GB only applies if
+that upload tree lives on the data disk (moved there, or junctioned/mapped). The
+watchdog's `PROCESSING: ... (N GB free)` line reports free space on the drive
+holding the EDF, so the first study on production shows which figure is real.
 
 The **development server is much smaller — about 4 GB free of a 29.9 GB disk**
 (confirmed 2026-09-24), i.e. room for roughly 290 cascades. That is ample for
@@ -99,7 +110,8 @@ cd "C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09"
 .\apply_local.ps1 -Target dev
 ```
 
-This backs up the six files it replaces into
+This backs up every file it replaces (the six `files\` modules, plus the six
+fsaverage surfaces under `mne_data\`, which it overwrites with identical bytes) into
 `CleanEEGProject - development\_backup-2026-09\`, overlays `staged\`, and runs
 the checksum check. Required last line: `All staged files verified.`
 
@@ -108,7 +120,7 @@ numpy version. If step 5 on the server says 2.x, come back and run
 `.\apply_local.ps1 -Target dev -WithOptional` so the mirror matches the server.
 
 The mirror is now the exact tree to push. Because `apply_local.ps1` only
-touches the seven files, everything else in that folder stays as it was.
+touches the staged files, everything else in that folder stays as it was.
 
 ---
 
@@ -196,4 +208,4 @@ separate decision.
   original `tomwatchdog.py`.
 
 No data files, reference databases or on-disk formats are touched by any of
-the seven files, so rollback is a complete undo.
+the staged files, so rollback is a complete undo.

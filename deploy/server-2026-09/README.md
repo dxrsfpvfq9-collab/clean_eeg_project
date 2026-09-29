@@ -16,7 +16,7 @@ py deploy/server-2026-09/build_server_update.py
 ```
 
 **Deploying?** `QUICK_STEPS.md` is all you need: back up six files, paste
-seven in, restart the watchdog, check one study. `DEPLOY_PROCEDURE.md` and
+the staged tree in, make sure `CLEANEEG_NO_BRAIN` is not 1, restart the watchdog, check one study. `DEPLOY_PROCEDURE.md` and
 `DEPLOY_STEPS_DEV.md` are the same thing with verification scripts at each
 step, for when a result looks off. This file explains what changed and why.
 
@@ -31,8 +31,10 @@ step, for when a result looks off. This file explains what changed and why.
 | `run_cascade.py` | **new** — the cascade pass, run after the panel | new file |
 | `files/create_report_pdf.py` | `save_gui_screenshot` raises window before capture | 1 hunk |
 | `files/Montage_6.py` | Re-enable overview `savefig`; sort pages by component %; renumber components by magnitude | whole file |
-| `files/dummy_gui.py` | Head-map scale/sign fixes; Cepstrum panel replaced by Periodicity | whole file |
+| `files/dummy_gui.py` | Head-map scale/sign fixes; Cepstrum panel replaced by Periodicity; `dummy_brain` draws without OpenGL | whole file |
 | `files/Component_selector.py` | Same Periodicity panel + renumbered button grid, for the interactive GUI | whole file |
+| `process/brain_render.py` | **new** — the OpenGL-free brain page | new file |
+| `mne_data/MNE-fsaverage-data/fsaverage/surf/{lh,rh}.{pial,white,sulc}` | fsaverage surfaces the brain page draws (~25 MB) | data, identical to the mirrors' |
 | `tomwatchdog_serialized.py` | One study at a time + wait for upload to finish | new file |
 
 `Montage_6.py`, `dummy_gui.py` and `Component_selector.py` ship whole because
@@ -228,6 +230,27 @@ the existing `icabutton[orig-1]` lookups keep working.
 One consequence to expect: **a report issued before this change numbers the
 same study's components differently.** Old and new cascades for one recording
 cannot be cross-referenced by component number.
+
+**Brain pages without OpenGL.** Each component's source-localization page used
+to render through PyVista/VTK, which needs OpenGL 3.2+ and *aborts the process*
+on the GPU-less AWS servers — the reason `CLEANEEG_NO_BRAIN=1` was set there.
+`dummy_brain` (in the staged `dummy_gui.py`) now calls `process/brain_render.py`
+instead: the fsaverage pial surface is rasterised by a small numpy z-buffer and
+drawn with matplotlib Agg — six cortical views, three slices through the peak
+voxel, and an info column. It imports only numpy/scipy/matplotlib. It reads the
+six surfaces under `mne_data/MNE-fsaverage-data/fsaverage/surf/` (~25 MB, staged;
+byte-identical to what both server mirrors already hold). Same voxel CSD, same
+returned region string, so the summary table's Lobe/Region/Area columns fill in
+again. With this shipped, `CLEANEEG_NO_BRAIN` must be 0 or unset.
+`CLEANEEG_BRAIN_RENDER=vtk` restores the old page on a machine with real OpenGL.
+
+Verified by overlaying the bundle (via `apply_local.ps1 -RootOverride`) onto a
+copy of the production mirror with its `mne_data` **deleted**, so the surfaces
+could only come from the bundle: `run_cascade.py` on `raw_130399` → rc 0,
+40 pages (overview, table, 19 × component + brain), 21 MB, no VTK.
+
+The staged `mne_data/` is git-ignored (the repo-wide `mne_data/` rule);
+`build_server_update.py` regenerates it and records its hashes.
 
 ## Verification already done
 

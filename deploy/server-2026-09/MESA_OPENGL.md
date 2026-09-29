@@ -1,5 +1,10 @@
 # Software OpenGL (Mesa) for the cascade's brain pages
 
+> **Superseded.** The brain pages are now drawn without OpenGL by
+> `process/brain_render.py` (numpy + matplotlib), which ships in `staged/`.
+> Nothing below is needed unless you deliberately run the old VTK page
+> (`CLEANEEG_BRAIN_RENDER=vtk`). Kept for that case and for the record.
+
 ## The problem
 
 Each cascade component gets a 3D source-localization page, rendered by

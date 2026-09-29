@@ -150,11 +150,19 @@ bullet([("Global STD ", "b"),
         (", inside the normal range. No other metric moves \u2014 verified 47 of 48 "
          "identical against this server's own output.", "")])
 bullet([("An image cascade ", "b"), ("(", ""), ("<study>.imagecascade.pdf", "code"),
-        (", one page per ICA component) is written next to every panel, a few "
+        (", two pages per ICA component: the component view and its brain "
+         "source-localization view) is written next to every panel, a few "
          "minutes after the panel itself.", "")])
+bullet([("Brain pages without OpenGL. ", "b"),
+        ("They are now drawn in software, so they work on the AWS servers. The old "
+         "3D viewer needed a graphics card; ", ""), ("CLEANEEG_NO_BRAIN", "code"),
+        (" is no longer needed.", "")])
 bullet([("Disk: ", "b"),
-        ("roughly 10\u201315 MB per study. 1,000 studies use about 15 GB of "
-         "production's 100 GB free. The new watchdog warns below 10 GB.", "")])
+        ("roughly 21 MB per study with the brain pages. Production has ~200 GB "
+         "on a separate data disk: 1,000 studies use about 21 GB of it. Cascades "
+         "are written next to the uploaded EDF, so this assumes the upload folder "
+         "is on that disk \u2014 the watchdog\u2019s ", ""), ("GB free", "code"),
+        (" figure shows which drive is in use. It warns below 10 GB.", "")])
 
 # ---- files -----------------------------------------------------------------
 doc.add_heading("The files", level=1)
@@ -171,6 +179,10 @@ table(["File", "Goes into", "What it does"],
        ("files" + BS + "dummy_gui.py", files_dir, "cascade component pages"),
        ("files" + BS + "Component_selector.py", files_dir, "same fixes, kept in sync"),
        ("files" + BS + "create_report_pdf.py", files_dir, "cascade screen capture"),
+       ("process" + BS + "brain_render.py", "project" + BS + "process" + BS,
+        "new \u2014 brain pages, no OpenGL"),
+       ("mne_data" + BS + "  (whole folder)", proj_dir,
+        "brain surfaces, ~25 MB; merge"),
        ("run_cascade.py", proj_dir, "new \u2014 the cascade pass"),
        ("tomwatchdog_serialized.py", proj_dir, "new watchdog \u2014 one at a time")],
       (Inches(2.7), Inches(1.7), Inches(2.1)))
@@ -181,7 +193,6 @@ rich([("\u201cProject folder\u201d is the directory containing ", ""),
       (".", "")], after=8)
 
 # ---- steps -----------------------------------------------------------------
-doc.add_page_break()
 doc.add_heading("On the server", level=1)
 rich([("In your Remote Desktop session to the server.", "i")], after=6)
 
@@ -198,6 +209,13 @@ bullet([("Copy the six ", ""), (".py", "code"), (" files from ", ""),
         ("staged" + BS + "files" + BS, "code"), (" into the project\u2019s ", ""),
         ("files" + BS, "code"), (" folder. Say ", ""), ("Yes", "b"),
         (" to overwrite.", "")])
+bullet([("Copy ", ""), ("staged" + BS + "process" + BS + "brain_render.py", "code"),
+        (" into the project\u2019s ", ""), ("process" + BS, "code"), (" folder.", "")])
+bullet([("Copy the ", ""), ("staged" + BS + "mne_data", "code"),
+        (" folder into the project folder. If the project already has one, let it "
+         "merge and say ", ""), ("Yes", "b"),
+        (" to overwrite \u2014 the six surface files are identical to the ones "
+         "already there.", "")])
 bullet([("Copy ", ""), ("run_cascade.py", "code"), (" and ", ""),
         ("tomwatchdog_serialized.py", "code"),
         (" into the project folder itself, next to ", ""), ("module7.py", "code"),
@@ -207,12 +225,11 @@ doc.add_heading("3.  Swap the watchdog", level=2)
 rich([("In the console window where ", ""), ("tomwatchdog.py", "code"),
       (" is running, press ", ""), ("Ctrl-C", "b"),
       (". Then, in that same window:", "")], after=4, keep=True)
-code_block(["set CLEANEEG_NO_BRAIN=1"])
-rich([("That switches off the 3D source-localization pages. ", ""),
-      ("The servers need it", "b"),
-      (" \u2014 those pages render through VTK, which needs OpenGL 3.2+, and the AWS "
-       "machines have no graphics card. VTK does not report an error; it kills the "
-       "process. Do not set it on a workstation that has a real graphics card.", "")],
+code_block(["set CLEANEEG_NO_BRAIN=0"])
+rich([("That makes sure the brain pages are ", ""), ("on", "b"),
+      (". An earlier version of these steps set ", ""), ("CLEANEEG_NO_BRAIN=1", "code"),
+      (" on the servers because the old brain pages needed OpenGL. They no longer "
+       "do, so the variable must be 0 or unset.", "")],
      after=6)
 rich([("Now start the new watchdog. ", ""), ("Development server:", "b")],
      after=2, keep=True)
@@ -226,8 +243,9 @@ rich([("It prints ", ""), ("monitor dir:", "code"), (" and ", ""),
 rich([("It must run in that console window \u2014 not as a service, not from a "
        "scheduled task. The cascade captures the screen, and only that session has "
        "one.", "b")], after=6)
-rich([("Once a study has processed cleanly, make the variable permanent from an "
-       "elevated prompt: ", ""), ("setx CLEANEEG_NO_BRAIN 1 /M", "code"), (".", "")],
+rich([("If you ran ", ""), ("setx CLEANEEG_NO_BRAIN 1 /M", "code"),
+      (" on this server before, undo it from an elevated prompt: ", ""),
+      ("setx CLEANEEG_NO_BRAIN 0 /M", "code"), (".", "")],
      after=8)
 
 doc.add_heading("4.  Upload one study and check the result", level=2)
@@ -235,7 +253,6 @@ rich([("The panel appears within seconds; the cascade follows. The console "
        "shows:", "")], after=4, keep=True)
 code_block(["PROCESSING: ...  (queue depth 0, N GB free)",
             "  PANEL in 6s  rc=0",
-            "[CLEANEEG_NO_BRAIN set: skipping 3D source-localization pages]",
             "CASCADE OK: ...imagecascade.pdf",
             "  CASCADE in 66s  rc=0",
             "  DONE in 73s  ..."])
@@ -259,6 +276,9 @@ checks = [
      (" exists, appearing a few minutes after the panel.", "")],
     [("Open the cascade and page through it: component graphs on every page, ", ""),
      ("no black pages", "b"), (".", "")],
+    [("After each component page there is a ", ""), ("brain page", "b"),
+     (": shaded cortex from six sides with the source in red\u2013yellow, plus "
+      "three slices.", "")],
     [("Page 1 again: the four ", ""), ("Moment 3", "b"),
      (" rows are in the hundreds to low thousands.", "")],
 ]
@@ -299,7 +319,9 @@ rich([("That is the whole deployment.", "b"),
 # ---- rollback --------------------------------------------------------------
 doc.add_heading("If something is wrong", level=1)
 numbered([("Copy the six files from ", ""), ("backup-2026-09", "code"),
-          (" back into ", ""), ("files" + BS, "code"), (".", "")])
+          (" back into ", ""), ("files" + BS, "code"),
+          (". The new ", ""), ("brain_render.py", "code"), (" and ", ""),
+          ("mne_data", "code"), (" can stay; nothing else uses them.", "")])
 numbered([("Ctrl-C the new watchdog.", "")])
 numbered([("Start the old one: ", ""), ("py tomwatchdog.py", "code"), ("", "")])
 rich([("To keep the panel fix but stop cascades, set ", ""),
@@ -334,12 +356,12 @@ bullet([("Older panels: ", "b"),
          "Nothing else on them is wrong; their out-of-bounds count is one too "
          "high.", "")])
 bullet([("Longer documents: ", "b"),
-        ("README.md explains each change; MESA_OPENGL.md covers getting the 3D "
-         "brain pages working on a server if you ever want them there.", "")])
+        ("README.md explains each change. MESA_OPENGL.md is out of date: the brain "
+         "pages no longer need OpenGL.", "")])
 
 fp = sec.footer.paragraphs[0]
 fp.text = ("deploy" + BS + "server-2026-09" + BS + "Quick Steps  \u2014  "
-           "built from production source, verified 2026-09-24")
+           "built from production source, verified 2026-09-29")
 fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 for r in fp.runs:
     r.font.size = Pt(8)

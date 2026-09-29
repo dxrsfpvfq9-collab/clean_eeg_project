@@ -40,7 +40,7 @@ from watchdog.events import FileSystemEventHandler
 DEFAULT_MONITOR_DIR = "c:/inetpub/wwwroot/EEGScreening/Source/Practitioners"
 
 # Log a loud warning before each study when free space on the monitored drive
-# is below this. A panel + cascade adds ~15 MB per study; 10 GB is ~650 more
+# is below this. A panel + cascade adds ~21 MB per study; 10 GB is ~450 more
 # studies of headroom, which is plenty of notice to clear space. Processing is
 # NOT stopped -- the panel is the essential output and must keep flowing.
 LOW_SPACE_GB = 10.0

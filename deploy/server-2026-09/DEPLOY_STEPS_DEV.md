@@ -111,7 +111,10 @@ If step 5 said numpy 2.x, also:
 robocopy "C:\deploy-2026-09\staged-optional" $PROJ /E
 ```
 
-This overwrites six files and adds `tomwatchdog_serialized.py`. It does not
+This overwrites six files, adds `tomwatchdog_serialized.py`, `run_cascade.py` and
+`process\brain_render.py`, and rewrites the six fsaverage surfaces under
+`mne_data\` with identical bytes. `CLEANEEG_NO_BRAIN` must be 0 or unset: the
+brain view no longer needs OpenGL. It does not
 touch the reference databases, the watched upload folder, or any output.
 
 ---
