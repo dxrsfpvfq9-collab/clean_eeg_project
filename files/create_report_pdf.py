@@ -1054,6 +1054,13 @@ def create_metric_strings():
         "Split Half Reliability"]
 
 def save_gui_screenshot(window):
+    # Offscreen pages carry their own compositor, so there is nothing on screen
+    # to grab -- and nothing that can be covered, blanked by a lock screen, or
+    # lost when an RDP client disconnects.
+    render = getattr(window, "render_offscreen", None)
+    if render is not None:
+        return render()
+
     # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
     # is visually on top of that region is what gets saved. During a batch run
     # the launching terminal / Claude window can sit over the fullscreen

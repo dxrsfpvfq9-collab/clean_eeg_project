@@ -346,6 +346,14 @@ copy_dev("run_cascade.py")
 #     Imports only numpy/scipy/matplotlib, which the pipeline already needs.
 copy_dev("process/brain_render.py")
 
+# 2h. Offscreen page compositor. Ships INERT: nothing uses it unless
+#     CLEANEEG_OFFSCREEN=1 is set, in which case dummy_gui binds its widget
+#     names to it and the component page is composited with Agg + PIL instead
+#     of being built as a Tk window and photographed off the desktop. That is
+#     what lets a cascade survive a sleeping workstation, a dropped RDP client
+#     or a locked screen -- none of which the screen-grab path tolerates.
+copy_dev("process/offscreen_tk.py")
+
 # 2h. Cascade labels are de-identified: Montage_6.py (staged above) masks likely
 #     names in the study file name with '#' before printing it on the overview
 #     and component pages. Pure-stdlib helper; display only.

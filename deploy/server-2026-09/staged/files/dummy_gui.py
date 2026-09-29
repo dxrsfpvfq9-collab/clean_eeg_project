@@ -7,7 +7,31 @@ import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.cm import ScalarMappable
+import os
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+#  OFFSCREEN RENDERING -------------------------------------------------------
+#  With CLEANEEG_OFFSCREEN=1 the page is composited by process/offscreen_tk.py
+#  instead of being built as a Tk window and photographed off the desktop. That
+#  removes the dependency on a live, unlocked, composited session -- the thing
+#  that kills a cascade when the workstation sleeps or an RDP client drops.
+#
+#  Rebinding happens HERE, after the tkinter imports, because `from tkinter
+#  import *` followed by `from tkinter.ttk import *` has already bound bare
+#  Button/Label/Canvas/Listbox in this module's namespace; substituting the
+#  `tk` alias alone would miss them.
+if os.environ.get("CLEANEEG_OFFSCREEN", "") not in ("", "0"):
+    from process import offscreen_tk as _off
+    tk = _off
+    ttk = _off.ttk
+    font = _off.font
+    FigureCanvasTkAgg = _off.FigureCanvasTkAgg
+    Button = _off.Button
+    Label = _off.Label
+    Canvas = _off.Canvas
+    Listbox = _off.Listbox
+    Style = _off.Style
+#  ---------------------------------------------------------------------------
 from matplotlib.figure import Figure
 from scipy.interpolate import griddata
 import matplotlib.patches as patches
