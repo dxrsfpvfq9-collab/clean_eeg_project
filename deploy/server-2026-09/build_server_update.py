@@ -211,6 +211,11 @@ copy_dev("run_cascade.py")
 #     Imports only numpy/scipy/matplotlib, which the pipeline already needs.
 copy_dev("process/brain_render.py")
 
+# 2h. Cascade labels are de-identified: Montage_6.py (staged above) masks likely
+#     names in the study file name with '#' before printing it on the overview
+#     and component pages. Pure-stdlib helper; display only.
+copy_dev("files/deidentify.py")
+
 #     The renderer draws the fsaverage cortex from these six FreeSurfer surfaces
 #     (~25 MB), read relative to the project root. The workstation mirrors of
 #     both servers already carry them, byte-identical to dev -- the old

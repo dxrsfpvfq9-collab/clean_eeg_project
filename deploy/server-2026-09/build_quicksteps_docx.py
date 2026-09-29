@@ -179,6 +179,7 @@ table(["File", "Goes into", "What it does"],
        ("files" + BS + "dummy_gui.py", files_dir, "cascade component pages"),
        ("files" + BS + "Component_selector.py", files_dir, "same fixes, kept in sync"),
        ("files" + BS + "create_report_pdf.py", files_dir, "cascade screen capture"),
+       ("files" + BS + "deidentify.py", files_dir, "new \u2014 masks names on cascade pages"),
        ("process" + BS + "brain_render.py", "project" + BS + "process" + BS,
         "new \u2014 brain pages, no OpenGL"),
        ("mne_data" + BS + "  (whole folder)", proj_dir,
@@ -205,7 +206,7 @@ code_block(["Component_selector.py", "Montage_6.py", "create_report_pdf.py",
             "edftotextbynameplotproc.py"])
 
 doc.add_heading("2.  Paste the new files in", level=2)
-bullet([("Copy the six ", ""), (".py", "code"), (" files from ", ""),
+bullet([("Copy the seven ", ""), (".py", "code"), (" files from ", ""),
         ("staged" + BS + "files" + BS, "code"), (" into the project\u2019s ", ""),
         ("files" + BS, "code"), (" folder. Say ", ""), ("Yes", "b"),
         (" to overwrite.", "")])

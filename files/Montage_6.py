@@ -17,6 +17,7 @@ from files.file_svc import setup_electrode_names
 from files.Component_selector import ComponentViewer
 from process.detect_artifact import find_suspect_ica_components, detect_peak
 from process.detect_artifact import reason_to_string
+from files.deidentify import deidentify_label
 import tkinter as tk
 from PIL import Image as img
 from tkinter import *
@@ -144,7 +145,11 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
       now = datetime.datetime.now()
       datetime_string = now.strftime('%Y-%m-%d %H:%M:%S')
 #  TRUNCATE FILE PATH TO SHOW NAME ONLY IN FUTURE USE "Studies" for BrainAvatar
-      tlabel = "BMrICA: " + short_name + " " + datetime_string
+#  De-identified: likely names in the file name are masked with '#' (HIPAA);
+#  this label is printed on the overview and on every component page. Built
+#  from the full path (outputdir1 = path minus ".edf") rather than short_name,
+#  which is the path's last 30 characters and can cut off the case number.
+      tlabel = "BMrICA: " + deidentify_label(outputdir1 or short_name) + " " + datetime_string
       axm.text(0, -2, tlabel, fontsize=10)
       axm.set_yticks(np.arange(n))
 

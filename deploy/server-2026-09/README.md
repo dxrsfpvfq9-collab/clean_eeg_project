@@ -34,6 +34,7 @@ step, for when a result looks off. This file explains what changed and why.
 | `files/dummy_gui.py` | Head-map scale/sign fixes; Cepstrum panel replaced by Periodicity; `dummy_brain` draws without OpenGL | whole file |
 | `files/Component_selector.py` | Same Periodicity panel + renumbered button grid, for the interactive GUI | whole file |
 | `process/brain_render.py` | **new** — the OpenGL-free brain page | new file |
+| `files/deidentify.py` | **new** — masks likely names in the study file name on cascade pages (HIPAA) | new file |
 | `mne_data/MNE-fsaverage-data/fsaverage/surf/{lh,rh}.{pial,white,sulc}` | fsaverage surfaces the brain page draws (~25 MB) | data, identical to the mirrors' |
 | `tomwatchdog_serialized.py` | One study at a time + wait for upload to finish | new file |
 

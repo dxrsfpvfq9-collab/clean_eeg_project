@@ -18,7 +18,8 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | Copy this | Into | Bytes |
 |---|---|---|
 | `files\Component_selector.py` | project `files\` | 61752 |
-| `files\Montage_6.py` | project `files\` | 53362 |
+| `files\Montage_6.py` | project `files\` | 53752 |
+| `files\deidentify.py` | project `files\` | 3967 |
 | `files\create_report_pdf.py` | project `files\` | 57227 |
 | `files\dummy_gui.py` | project `files\` | 55607 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
@@ -39,7 +40,8 @@ these into it: `Component_selector.py`, `Montage_6.py`, `create_report_pdf.py`,
 `dummy_gui.py`, `edftotextbycommandplotproc.py`, `edftotextbynameplotproc.py`.
 
 **2. Paste the new files in.**
-Six into `files\` (overwrite), `brain_render.py` into `process\`, and
+Seven into `files\` (six overwrite; `deidentify.py` is new), `brain_render.py`
+into `process\`, and
 `run_cascade.py` + `tomwatchdog_serialized.py` into the project folder next to
 `module7.py`. Copy the `mne_data` folder into the project folder too; if one is
 already there, let it merge and overwrite — the six surface files are identical
