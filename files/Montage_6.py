@@ -364,28 +364,36 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             print(data_array)
             #---------------------------------------------------------------------------------------------------------------------------
             if selstring[12] == 1:
+              # Every cascade page carries this title in a strip across the
+              # top; each image is fitted into the area below the strip.
+              CASCADE_TITLE = "BrainMaster ICA Deconvolution"
+              TITLE_H = 12                       # mm reserved at the top
+              avail_h = 210 - TITLE_H
+
+              def add_titled_page():
+                  pdf.add_page(orientation="L")
+                  pdf.set_font("Arial", "B", 14)
+                  pdf.set_xy(0, 3)
+                  pdf.cell(297, 7, CASCADE_TITLE, 0, 0, "C")
+
               for screenshot in screenshots:
                 image = img.open(screenshot)
                 img_w, img_h = image.size
                 image.close()
                 aspect_ratio = img_w/img_h
-                if aspect_ratio > (297/210):
+                if aspect_ratio > (297/avail_h):
                     page_width = 297
                     page_height = page_width/aspect_ratio
                 else:
-                    page_height = 210
+                    page_height = avail_h
                     page_width = page_height*aspect_ratio
-                #x=(page_width)/2
-                if page_height < 210:
-                    y= 0 + np.abs((210-page_height)/2)
-                    x=0
-                else:
-                    y=0
-                    x= 0+np.abs((297-page_width)/2)
-                pdf.add_page(orientation="L")
+                x = (297 - page_width) / 2
+                y = TITLE_H + (avail_h - page_height) / 2
+                add_titled_page()
                 pdf.image(screenshot, x=x, y=y, w=page_width, h=page_height)
                 if screenshot == screenshots[0]:
-                    pdf.add_page(orientation="L")
+                    add_titled_page()
+                    pdf.set_xy(10, TITLE_H + 4)
                     pdf.set_font("Arial", size=10)
                     headers =["Comp. #", "%", "Max Site", "RSI", "Machine", "User", "Lobe", "Region", 'Area', "FFT Peak"]
                     # Convert numpy arrays to Python lists
