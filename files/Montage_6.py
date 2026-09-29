@@ -9,6 +9,40 @@ from matplotlib.figure import Figure
 import matplotlib.widgets
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+#  FOREGROUND-WINDOW GUARD -------------------------------------------------
+#  matplotlib's Tk backend wraps figure-manager creation in
+#  _restore_foreground_window_at_end(), which starts by calling
+#  Win32_GetForegroundWindow(). On Windows that returns NULL whenever the
+#  session has no foreground window -- a minimized or disconnected RDP client,
+#  a locked desktop, a window mid-activation -- and the C wrapper turns NULL
+#  into "ValueError: PyCapsule_New called with null pointer". It killed a
+#  17-minute cascade on the dev server (2026-09-24) after the render had
+#  already done its work.
+#
+#  Restoring focus is cosmetic for an unattended render, and every figure we
+#  build here is captured by ImageGrab rather than looked at, so replace the
+#  context manager with a no-op. Patched on the module object, because
+#  _backend_tk looks the name up as a module global at call time. Wrapped in
+#  try/except so a matplotlib version without it changes nothing.
+def _disable_tk_foreground_restore():
+    try:
+        from matplotlib.backends import _backend_tk
+    except Exception:
+        return
+    if not hasattr(_backend_tk, "_restore_foreground_window_at_end"):
+        return
+    import contextlib
+
+    @contextlib.contextmanager
+    def _no_foreground_restore():
+        yield
+
+    _backend_tk._restore_foreground_window_at_end = _no_foreground_restore
+
+
+_disable_tk_foreground_restore()
+#  -------------------------------------------------------------------------
 import numpy as np
 from scipy.signal import find_peaks
 from files.create_report_pdf import save_gui_screenshot
