@@ -82,6 +82,49 @@ CASCADE_PASS = True
 PANEL_TIMEOUT = 600       # seconds (10 min)
 CASCADE_TIMEOUT = 14400   # seconds (4 h)
 
+# LOGGING: console AND file.
+#
+# Everything used to go to stdout only, so the record lived in the console
+# scrollback and died with the window. That repeatedly cost us the one thing
+# worth having after a failure -- the child process's traceback. Now every line
+# from the watchdog and from each module7.py / run_cascade.py it spawns is
+# timestamped and appended to logs\watchdog-YYYY-MM-DD.log, while still
+# appearing live in the console.
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+_log_fh = None
+_log_lock = threading.Lock()
+
+
+def _log_path():
+    return os.path.join(LOG_DIR, "watchdog-%s.log" % time.strftime("%Y-%m-%d"))
+
+
+def _emit(*parts, **kw):
+    """Write one line to the console and to today's log file.
+
+    Accepts several arguments like print() does: a worker thread must not be
+    killable by a TypeError from its own logging call, which is exactly what
+    happened when this took a single argument and a caller passed three.
+    """
+    stamp = kw.get("stamp", True)
+    line = " ".join(str(p) for p in parts)
+    global _log_fh
+    text = ("%s  %s" % (time.strftime("%H:%M:%S"), line)) if stamp else line
+    print(text)
+    try:
+        with _log_lock:
+            want = _log_path()
+            if _log_fh is None or getattr(_log_fh, "name", None) != want:
+                if _log_fh is not None:
+                    _log_fh.close()
+                os.makedirs(LOG_DIR, exist_ok=True)
+                _log_fh = open(want, "a", encoding="utf-8", errors="replace")
+            _log_fh.write(text + chr(10))
+            _log_fh.flush()
+    except Exception:
+        pass          # a logging failure must never stop a study
+
+
 # SPLIT QUEUES: panels overtake cascades.
 #
 # One queue per PASS, not one per study. A study is queued for its panel, and
@@ -119,7 +162,7 @@ def _wait_until_settled(path):
             stable = 0
             last = size
         time.sleep(SETTLE_INTERVAL)
-    print("  TIMEOUT waiting for upload to finish:", path)
+    _emit("  TIMEOUT waiting for upload to finish: " + str(path))
     return False
 
 
@@ -131,12 +174,31 @@ def _free_gb(path):
 
 
 def _run(script, path, timeout):
-    """Run one pipeline pass, killing the whole tree if it overruns."""
-    proc = subprocess.Popen([sys.executable, script, path])
+    """Run one pipeline pass, killing the whole tree if it overruns.
+
+    The child's stdout and stderr are relayed line by line so its output --
+    above all, its traceback -- reaches the log file instead of only the
+    console. A reader thread does the pumping so the wait() timeout still
+    applies; iterating the pipe on this thread would block past the cap.
+    """
+    proc = subprocess.Popen([sys.executable, script, path],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            bufsize=1, universal_newlines=True, errors="replace")
+
+    def _pump():
+        try:
+            for line in proc.stdout:
+                _emit("    | " + line.rstrip(chr(10)), stamp=False)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_pump, daemon=True)
+    t.start()
     try:
         proc.wait(timeout=timeout or None)
+        t.join(timeout=10)
     except subprocess.TimeoutExpired:
-        print("  TIMED OUT after %ds, killing %s for:" % (timeout, script), path)
+        _emit("  TIMED OUT after %ds, killing %s for: %s" % (timeout, script, path))
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
@@ -156,17 +218,16 @@ def panel_worker():
                 continue
             free = _free_gb(path)
             if free < LOW_SPACE_GB:
-                print("  *** LOW DISK SPACE: %.1f GB free on the upload drive ***" % free)
-            print("PANEL START:", path,
-                  " (panels waiting %d, cascades waiting %d, %.1f GB free)"
-                  % (panel_q.qsize(), cascade_q.qsize(), free))
+                _emit("  *** LOW DISK SPACE: %.1f GB free on the upload drive ***" % free)
+            _emit("PANEL START: %s  (panels waiting %d, cascades waiting %d, %.1f GB free)"
+                  % (path, panel_q.qsize(), cascade_q.qsize(), free))
             t0 = time.time()
             rc = _run("module7.py", path, PANEL_TIMEOUT)
-            print("  PANEL in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
+            _emit("  PANEL in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
             if CASCADE_PASS:
                 cascade_q.put(path)
         except Exception as exc:
-            print("  ERROR in panel pass for", path, "->", repr(exc))
+            _emit("  ERROR in panel pass for %s -> %r" % (path, exc))
         finally:
             panel_q.task_done()
 
@@ -176,13 +237,12 @@ def cascade_worker():
     while True:
         path = cascade_q.get()
         try:
-            print("CASCADE START:", path,
-                  " (cascades waiting %d)" % cascade_q.qsize())
+            _emit("CASCADE START: %s  (cascades waiting %d)" % (path, cascade_q.qsize()))
             t0 = time.time()
             rc = _run("run_cascade.py", path, CASCADE_TIMEOUT)
-            print("  CASCADE in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
+            _emit("  CASCADE in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
         except Exception as exc:
-            print("  ERROR in cascade pass for", path, "->", repr(exc))
+            _emit("  ERROR in cascade pass for %s -> %r" % (path, exc))
         finally:
             cascade_q.task_done()
 
@@ -194,7 +254,7 @@ class NewFileHandler(FileSystemEventHandler):
         path = event.src_path
         if not path.lower().endswith(".edf"):
             return
-        print("QUEUED:", path)
+        _emit("QUEUED: " + str(path))
         panel_q.put(path)
 
 
@@ -223,7 +283,8 @@ if __name__ == "__main__":
     observer = Observer()
     observer.schedule(NewFileHandler(), MONITOR_DIR, recursive=True)
     observer.start()
-    print("observer created and started")
+    _emit("logging to " + _log_path())
+    _emit("observer created and started")
 
     try:
         while True:
