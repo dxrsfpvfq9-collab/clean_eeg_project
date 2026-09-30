@@ -82,8 +82,24 @@ CASCADE_PASS = True
 PANEL_TIMEOUT = 600       # seconds (10 min)
 CASCADE_TIMEOUT = 14400   # seconds (4 h)
 
-work_q = queue.Queue()
-
+# SPLIT QUEUES: panels overtake cascades.
+#
+# One queue per PASS, not one per study. A study is queued for its panel, and
+# only joins the cascade queue once its panel exists. The two run on separate
+# threads, so a panel starts within seconds of an upload even while a cascade
+# from an earlier study is still going -- which matters when two practitioners
+# upload minutes apart and the second would otherwise wait out the first study's
+# whole cascade for a report that takes seconds to compute.
+#
+# Cascades stay strictly one at a time. That used to be a correctness
+# requirement: two of them would each capture the other's fullscreen Tk window.
+# With CLEANEEG_OFFSCREEN=1 nothing touches the screen and that cannot happen,
+# but one at a time is still the right call on a 2-vCPU box.
+#
+# A panel running alongside a cascade is safe in BOTH modes: the panel pass
+# never enters the cascade block, so it never captures anything.
+panel_q = queue.Queue()
+cascade_q = queue.Queue()
 
 def _wait_until_settled(path):
     """Block until path's size stops changing. False if it never settles."""
@@ -131,33 +147,44 @@ def _run(script, path, timeout):
     return proc.returncode
 
 
-def worker():
-    """Process one study at a time, forever."""
+def panel_worker():
+    """Write the brain panel, then hand the study to the cascade queue."""
     while True:
-        path = work_q.get()
+        path = panel_q.get()
         try:
             if not _wait_until_settled(path):
                 continue
             free = _free_gb(path)
             if free < LOW_SPACE_GB:
                 print("  *** LOW DISK SPACE: %.1f GB free on the upload drive ***" % free)
-            print("PROCESSING:", path, " (queue depth %d, %.1f GB free)"
-                  % (work_q.qsize(), free))
-            started = time.time()
-
+            print("PANEL START:", path,
+                  " (panels waiting %d, cascades waiting %d, %.1f GB free)"
+                  % (panel_q.qsize(), cascade_q.qsize(), free))
+            t0 = time.time()
             rc = _run("module7.py", path, PANEL_TIMEOUT)
-            print("  PANEL in %ds  rc=%s" % (time.time() - started, rc))
-
+            print("  PANEL in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
             if CASCADE_PASS:
-                casc_started = time.time()
-                rc_c = _run("run_cascade.py", path, CASCADE_TIMEOUT)
-                print("  CASCADE in %ds  rc=%s" % (time.time() - casc_started, rc_c))
-
-            print("  DONE in %ds  %s" % (time.time() - started, path))
-        except Exception as exc:            # never let one study kill the worker
-            print("  ERROR on", path, "->", repr(exc))
+                cascade_q.put(path)
+        except Exception as exc:
+            print("  ERROR in panel pass for", path, "->", repr(exc))
         finally:
-            work_q.task_done()
+            panel_q.task_done()
+
+
+def cascade_worker():
+    """Add the image cascade, one study at a time, never blocking a panel."""
+    while True:
+        path = cascade_q.get()
+        try:
+            print("CASCADE START:", path,
+                  " (cascades waiting %d)" % cascade_q.qsize())
+            t0 = time.time()
+            rc = _run("run_cascade.py", path, CASCADE_TIMEOUT)
+            print("  CASCADE in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
+        except Exception as exc:
+            print("  ERROR in cascade pass for", path, "->", repr(exc))
+        finally:
+            cascade_q.task_done()
 
 
 class NewFileHandler(FileSystemEventHandler):
@@ -168,7 +195,7 @@ class NewFileHandler(FileSystemEventHandler):
         if not path.lower().endswith(".edf"):
             return
         print("QUEUED:", path)
-        work_q.put(path)
+        panel_q.put(path)
 
 
 if __name__ == "__main__":
@@ -188,8 +215,10 @@ if __name__ == "__main__":
     print("monitor dir:", MONITOR_DIR)
     print("interpreter:", sys.executable)
 
-    threading.Thread(target=worker, daemon=True).start()
-    print("worker thread started (one study at a time)")
+    threading.Thread(target=panel_worker, daemon=True).start()
+    threading.Thread(target=cascade_worker, daemon=True).start()
+    print("panel worker started (panels run ahead of cascades)")
+    print("cascade worker started (one cascade at a time)")
 
     observer = Observer()
     observer.schedule(NewFileHandler(), MONITOR_DIR, recursive=True)
