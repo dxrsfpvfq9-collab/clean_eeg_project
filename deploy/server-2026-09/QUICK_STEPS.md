@@ -30,6 +30,13 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
 | `run_cascade.py` | project folder | 2661 |
 | `tomwatchdog_serialized.py` | project folder | 17863 |
+| `staged-optional\process\detect_artifact.py` | project `process\` | 60659 |
+
+`detect_artifact.py` sits in `staged-optional\` for historical reasons (it was
+first staged only as numpy-2 insurance) but now goes on **every** server: it
+silences the per-epoch alpha debug prints that flood the panel log. Its only
+other change from production is an `int32` pin that is a no-op on numpy < 2.0 —
+all 48 metrics verified identical against the previous version.
 
 `SHA256SUMS.txt` is the authority if a size here disagrees with it.
 
@@ -38,15 +45,17 @@ server that is `C:\app\MyCleanEEG\CleanEEGProject`.
 
 ## On the server (in your Remote Desktop session)
 
-**1. Back up the six files being replaced.**
+**1. Back up the seven files being replaced.**
 In the project's `files\` folder, make a folder called `backup-2026-09` and copy
 these into it: `Component_selector.py`, `Montage_6.py`, `create_report_pdf.py`,
-`dummy_gui.py`, `edftotextbycommandplotproc.py`, `edftotextbynameplotproc.py`.
+`dummy_gui.py`, `edftotextbycommandplotproc.py`, `edftotextbynameplotproc.py` —
+and from `process\`, `detect_artifact.py`.
 
 **2. Paste the new files in.**
 Eight into `files\` (six overwrite; `deidentify.py` and `color_strip.py` are
 new — `dummy_gui.py` and `Component_selector.py` fail to import without
-`color_strip.py`), `brain_render.py` + `offscreen_tk.py` into `process\`, and
+`color_strip.py`), `brain_render.py` + `offscreen_tk.py` into `process\` along
+with `staged-optional\process\detect_artifact.py` (overwrite), and
 `run_cascade.py` + `tomwatchdog_serialized.py` into the project folder next to
 `module7.py`. Copy the `mne_data` folder into the project folder too; if one is
 already there, let it merge and overwrite — the six surface files are identical
@@ -128,9 +137,9 @@ Then check, next to the EDF:
   *Periodicity* panel. After each component page comes its **brain page**:
   shaded cortex from six sides with the source in red–yellow, plus three slices.
 - Still on page 1: the four **Moment 3** rows are in the hundreds to low
-  thousands. If they are in the tens of thousands, that server's numpy is 2.x —
-  also paste `staged-optional\process\detect_artifact.py` into `process\` and
-  re-run.
+  thousands. If they are in the tens of thousands, `detect_artifact.py` from
+  step 2 did not land in `process\` and that server's numpy is 2.x — copy it
+  and re-run.
 
 That is the whole deployment. Production is identical, with the watchdog started
 with no argument, in the console session kept logged in from the dev server.
@@ -154,7 +163,7 @@ render cascades on a workstation with `batch_imagecascade.py` instead.
 
 ## If something is wrong
 
-Copy the six files from `backup-2026-09` back into `files\`, Ctrl-C the new
+Copy the files from `backup-2026-09` back (`detect_artifact.py` to `process\`, the rest to `files\`), Ctrl-C the new
 watchdog, and start the old one: `py tomwatchdog.py`.
 
 To keep the panel fix but stop cascades entirely, set `CASCADE_PASS = False`

@@ -189,7 +189,9 @@ table(["File", "Goes into", "What it does"],
        ("mne_data" + BS + "  (whole folder)", proj_dir,
         "brain surfaces, ~25 MB; merge"),
        ("run_cascade.py", proj_dir, "new \u2014 the cascade pass"),
-       ("tomwatchdog_serialized.py", proj_dir, "new watchdog \u2014 one at a time")],
+       ("tomwatchdog_serialized.py", proj_dir, "new watchdog \u2014 one at a time"),
+       ("staged-optional" + BS + "process" + BS + "detect_artifact.py",
+        "project" + BS + "process" + BS, "quieter panel log; metrics unchanged")],
       (Inches(2.7), Inches(1.7), Inches(2.1)))
 
 rich([("\u201cProject folder\u201d is the directory containing ", ""),
@@ -201,13 +203,15 @@ rich([("\u201cProject folder\u201d is the directory containing ", ""),
 doc.add_heading("On the server", level=1)
 rich([("In your Remote Desktop session to the server.", "i")], after=6)
 
-doc.add_heading("1.  Back up the six files being replaced", level=2)
+doc.add_heading("1.  Back up the seven files being replaced", level=2)
 rich([("In the project\u2019s ", ""), ("files" + BS, "code"),
       (" folder, make a new folder called ", ""), ("backup-2026-09", "code"),
       (" and copy these six files into it:", "")], after=4, keep=True)
 code_block(["Component_selector.py", "Montage_6.py", "create_report_pdf.py",
             "dummy_gui.py", "edftotextbycommandplotproc.py",
             "edftotextbynameplotproc.py"])
+rich([("Also copy ", ""), ("process" + BS + "detect_artifact.py", "code"),
+      (" into the same backup folder.", "")], after=6)
 
 doc.add_heading("2.  Paste the new files in", level=2)
 bullet([("Copy the eight ", ""), (".py", "code"), (" files from ", ""),
@@ -220,6 +224,12 @@ bullet([("Copy both files from ", ""), ("staged" + BS + "process" + BS, "code"),
         (" (", ""), ("brain_render.py", "code"), (", ", ""),
         ("offscreen_tk.py", "code"), (") into the project\u2019s ", ""),
         ("process" + BS, "code"), (" folder.", "")])
+bullet([("Copy ", ""),
+        ("staged-optional" + BS + "process" + BS + "detect_artifact.py", "code"),
+        (" into the project’s ", ""), ("process" + BS, "code"),
+        (" folder too, and say ", ""), ("Yes", "b"),
+        (" to overwrite. It silences the alpha debug prints that flood the panel "
+         "log; all 48 metrics were verified identical.", "")])
 bullet([("Copy the ", ""), ("staged" + BS + "mne_data", "code"),
         (" folder into the project folder. If the project already has one, let it "
          "merge and say ", ""), ("Yes", "b"),
@@ -343,10 +353,10 @@ for row in chk.rows[:-1]:
 doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
 rich([("If the Moment 3 rows are in the ", ""), ("tens of thousands", "b"),
-      (": that server has numpy 2.x. Also paste ", ""),
-      ("staged-optional" + BS + "process" + BS + "detect_artifact.py", "code"),
-      (" into the project\u2019s ", ""), ("process" + BS, "code"),
-      (" folder and re-run the study. One-time check per server.", "")], after=6)
+      (": that server has numpy 2.x and ", ""),
+      ("detect_artifact.py", "code"),
+      (" from step 2 did not land in ", ""), ("process" + BS, "code"),
+      (". Copy it and re-run the study.", "")], after=6)
 rich([("That is the whole deployment.", "b"),
       (" Production is the same four steps, starting the watchdog with no "
        "argument, in the console session kept logged in from the development "
@@ -354,8 +364,9 @@ rich([("That is the whole deployment.", "b"),
 
 # ---- rollback --------------------------------------------------------------
 doc.add_heading("If something is wrong", level=1)
-numbered([("Copy the six files from ", ""), ("backup-2026-09", "code"),
-          (" back into ", ""), ("files" + BS, "code"),
+numbered([("Copy the files from ", ""), ("backup-2026-09", "code"),
+          (" back: ", ""), ("detect_artifact.py", "code"), (" into ", ""),
+          ("process" + BS, "code"), (", the other six into ", ""), ("files" + BS, "code"),
           (". The new ", ""), ("brain_render.py", "code"), (" and ", ""),
           ("mne_data", "code"), (" can stay; nothing else uses them.", "")])
 numbered([("Ctrl-C the new watchdog.", "")])
