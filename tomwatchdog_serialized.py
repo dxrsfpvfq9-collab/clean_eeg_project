@@ -33,6 +33,7 @@
 
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -99,6 +100,12 @@ LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 _log_fh = None
 _log_lock = threading.Lock()
 
+# The pipeline colours some of its own output (edftotextbynameplotproc highlights
+# the STD RAW / STD RECON comparison). Those escapes are meaningful in a console
+# and pure noise in a file, where they arrive as literal "ESC[93m" around every
+# number. Strip them on the way to disk only, so the console keeps its colours.
+_ANSI = re.compile("\x1b\\[[0-9;]*[A-Za-z]")
+
 
 def _log_path():
     return os.path.join(LOG_DIR, "watchdog-%s.log" % time.strftime("%Y-%m-%d"))
@@ -124,7 +131,7 @@ def _emit(*parts, **kw):
                     _log_fh.close()
                 os.makedirs(LOG_DIR, exist_ok=True)
                 _log_fh = open(want, "a", encoding="utf-8", errors="replace")
-            _log_fh.write(text + chr(10))
+            _log_fh.write(_ANSI.sub("", text) + chr(10))
             _log_fh.flush()
     except Exception:
         pass          # a logging failure must never stop a study
