@@ -137,6 +137,34 @@ def _emit(*parts, **kw):
         pass          # a logging failure must never stop a study
 
 
+# QUICKEDIT: selecting text in a Windows console window (conhost's QuickEdit
+# mode) PAUSES every write to that console until the selection is cleared. Our
+# print() then blocks, the relay thread stops draining the child's pipe, the
+# pipe fills, and the child freezes mid-print at 0% CPU -- no error, no log
+# line. Seen on the dev server 2026-10-02: a cascade sat dead for 10+ minutes
+# because log text had been selected to copy; Esc released it. Turning QuickEdit
+# off for this console makes a click or drag harmless. Copy log text from
+# logs\watchdog-*.log instead (or re-enable it via the window's Properties).
+def _disable_quickedit():
+    if os.name != "nt":
+        return "not Windows"
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.GetStdHandle(-10)                 # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not k32.GetConsoleMode(h, ctypes.byref(mode)):
+            return "no console (input redirected?) - left as is"
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        ENABLE_EXTENDED_FLAGS = 0x0080            # required for the change to stick
+        new = (mode.value | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
+        if not k32.SetConsoleMode(h, new):
+            return "SetConsoleMode failed - QuickEdit still ON"
+        return "OFF (selecting text can no longer freeze the watchdog)"
+    except Exception as e:
+        return "could not change (%s)" % e
+
+
 # SPLIT QUEUES: panels overtake cascades.
 #
 # One queue per PASS, not one per study. A study is queued for its panel, and
@@ -349,6 +377,7 @@ if __name__ == "__main__":
     print("entering main")
     print("monitor dir:", MONITOR_DIR)
     print("interpreter:", sys.executable)
+    print("console QuickEdit:", _disable_quickedit())
 
     threading.Thread(target=panel_worker, daemon=True).start()
     threading.Thread(target=cascade_worker, daemon=True).start()

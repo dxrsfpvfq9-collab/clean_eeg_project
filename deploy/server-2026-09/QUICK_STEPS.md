@@ -29,7 +29,7 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `process\offscreen_tk.py` | project `process\` | 15246 |
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
 | `run_cascade.py` | project folder | 2661 |
-| `tomwatchdog_serialized.py` | project folder | 16336 |
+| `tomwatchdog_serialized.py` | project folder | 17863 |
 
 `SHA256SUMS.txt` is the authority if a size here disagrees with it.
 
@@ -109,6 +109,13 @@ Lines starting `P|` come from the panel pass and `C|` from the cascade pass;
 the two interleave while both run. **Check for `[offscreen] ON`.** If it reads
 `[offscreen] OFF`, the variable was not set in the window the watchdog was
 started from — Ctrl-C, `set CLEANEEG_OFFSCREEN=1`, and start it again.
+
+**Don't copy log text out of the console — use `logs\watchdog-*.log`.** In a
+Windows console, selecting text (QuickEdit) pauses all output to that window,
+and that pause blocks the running panel or cascade until the selection is
+cleared: no error, 0% CPU, no new files. The watchdog now turns QuickEdit off
+for its own window at startup and prints `console QuickEdit: OFF ...`. If you
+ever see a stall and the window title starts with **Select**, press **Esc**.
 
 (Those timings are from the development server, before the October 2026
 colour-strip speed-up; see "How long a study takes" below.)

@@ -486,6 +486,13 @@ z-scores meaningless on those rows.
   run continue to the report. Before this, any error inside cascade rendering
   exited `module7` with rc=1 and no `.icale.rep.pdf` at all — the cascade runs
   inside `montage_6`, well before the report is written.
+- **A selected console freezes the watchdog's children.** Windows conhost
+  QuickEdit pauses console output while text is selected; `_emit`'s print then
+  blocks, the relay stops draining the child's pipe, and the panel/cascade
+  freezes mid-print at 0% CPU with no error (dev server 2026-10-02, 10+ min,
+  released by Esc). `tomwatchdog_serialized.py` now clears QuickEdit on its own
+  console at startup (`_disable_quickedit`). Copy log text from
+  `logs\watchdog-*.log`, not the console.
 - **ICA IS deterministic.** `FastICA(..., random_state=0)` has been set
   since the `d4f522c` baseline, so re-running the same EDF on the same
   code reproduces the same metrics. Verified 2026-09-10: a dev re-run of

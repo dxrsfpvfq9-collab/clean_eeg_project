@@ -282,6 +282,15 @@ rich([("P|", "code"), (" lines come from the panel pass, ", ""), ("C|", "code"),
       ("[offscreen] ON", "code"), (".", "b"), (" If it says ", ""),
       ("OFF", "code"), (", Ctrl-C, run ", ""), ("set CLEANEEG_OFFSCREEN=1", "code"),
       (" in that window and start the watchdog again.", "")], after=4)
+rich([("Copy log text from ", "b"), ("logs\\watchdog-*.log", "code"),
+      (", not from the console. ", "b"),
+      ("Selecting text in a Windows console pauses all output to it, and that "
+       "pause freezes the running panel or cascade until the selection is "
+       "cleared — no error, no new files. The watchdog now switches this off "
+       "for its own window and prints ", ""),
+      ("console QuickEdit: OFF", "code"),
+      (". If a run ever stalls and the window title starts with ", ""),
+      ("Select", "b"), (", press ", ""), ("Esc", "b"), (".", "")], after=4)
 rich([("Those timings are from the development server before the October 2026 "
        "speed-up: panel 2\u20135 minutes, cascade about 80 minutes for a 10-minute "
        "recording. Each cascade component is now roughly 4\u00d7 faster. Then "
