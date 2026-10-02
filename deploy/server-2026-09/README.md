@@ -179,9 +179,10 @@ since those same components are in the panel's own ICA.
 py -c "import numpy; print(numpy.__version__)"
 ```
 
-**If it reports 2.0 or higher, deploy `staged-optional/process/detect_artifact.py`
-as well, and know that the server's existing panels already have four corrupt
-rows.** `detect_drowsiness` and `detect_moments` rely on `x_values**2`
+`staged-optional/process/detect_artifact.py` now ships to **every** server
+regardless of the answer (see "Quieter panel log" below). The version check
+still matters: **if it reports 2.0 or higher, that file is required rather than
+merely tidy, and the server's existing panels already have four corrupt rows.** `detect_drowsiness` and `detect_moments` rely on `x_values**2`
 overflowing int32 at i ≥ 46341 — the wrap-around values are what EC_191 was
 built from. numpy 2.0 changed `np.arange`'s default to int64, which stops the
 overflow and inflates the Moment 3 rows by 50–130×, with no error or warning.
@@ -199,6 +200,17 @@ deployment produced when the production tree ran under numpy 2.1.3.
 On numpy < 2.0 the pinned file is a no-op — `np.arange` already returns int32
 there — so deploying it costs nothing and removes the trap from any future
 Python or numpy upgrade. `verify_panel.py` catches this failure if it happens.
+
+### Quieter panel log
+
+The same file also comments out the per-epoch debug prints in the PDR/alpha
+detectors (`Indexes:`, the bare retcon numbers, `Half Width`, `NO VAL`,
+`Alphavals`/`AlphaNums`, `Alpha Speed`) — the bulk of every panel's output in the
+watchdog console and `logs\watchdog-*.log`. Print-only: a panel on `raw_130399`
+run with the old and new file gives a byte-identical 48-metric line. That is why
+it moved from "deploy if numpy is 2.x" to "deploy everywhere". It still lives
+in `staged-optional\` so the existing scripts and checksums keep their layout;
+`apply_local.ps1` now includes that folder by default (`-SkipOptional` opts out).
 
 ---
 
@@ -288,7 +300,7 @@ changes; with the pinned file overlaid the same test passes.
 **Follow `DEPLOY_STEPS_DEV.md`** — the full RDP walkthrough, with the exact
 commands, the order that keeps a before/after panel pair intact, and rollback.
 The rest of this section is the summary: back up the project, copy `staged\`
-over it (plus `staged-optional\` if numpy is 2.x), verify with
+over it, then `staged-optional\` (one file, on every server), verify with
 `verify_copy.ps1`.
 
 ### 2. Verify the panel did not move

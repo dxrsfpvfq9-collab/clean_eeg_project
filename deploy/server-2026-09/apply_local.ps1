@@ -4,13 +4,19 @@
 #
 #     .\apply_local.ps1 -Target dev        # C:\BrainPanel\CleanEEGProject - development
 #     .\apply_local.ps1 -Target prod       # C:\BrainPanel\CleanEEGProject - production
-#     .\apply_local.ps1 -Target prod -WithOptional   # also process\detect_artifact.py
+#     .\apply_local.ps1 -Target prod -SkipOptional   # leave process\detect_artifact.py alone
 #
 # What it does, in order:
 #   1. Backs up every file about to be replaced into <root>\_backup-2026-09\
 #      (only those files, not the whole 280 MB tree).
-#   2. Copies staged\ (and staged-optional\ if -WithOptional) over the root.
+#   2. Copies staged\ AND staged-optional\ over the root (-SkipOptional: staged\ only).
 #   3. Runs verify_copy.ps1 so the result is checked against SHA256SUMS.txt.
+#
+# staged-optional\ holds only process\detect_artifact.py. It was first staged as
+# numpy>=2 insurance (its int32 pin, a no-op on numpy<2), but it also silences the
+# per-epoch alpha debug prints that flood the panel log, so it now ships to every
+# server by default. All 48 metrics verified identical against the old copy.
+# -WithOptional is still accepted, as a no-op, so older command lines keep working.
 #
 # It never touches plot\plot_svc.py or tomwatchdog.py -- both differ between the
 # dev and production mirrors for reasons unrelated to this deployment, and must
@@ -21,6 +27,9 @@ param(
     [ValidateSet("dev", "prod")]
     [string]$Target,
 
+    [switch]$SkipOptional,
+
+    # Former opt-in; now the default. Accepted and ignored.
     [switch]$WithOptional,
 
     # Testing hook: point at some other project folder instead of the two
@@ -42,7 +51,7 @@ if (-not (Test-Path (Join-Path $root "module7.py"))) {
 }
 
 $sources = @((Join-Path $here "staged"))
-if ($WithOptional) { $sources += (Join-Path $here "staged-optional") }
+if (-not $SkipOptional) { $sources += (Join-Path $here "staged-optional") }
 
 # --- 1. back up exactly the files that are about to change -------------------
 $backup = Join-Path $root "_backup-2026-09"
@@ -75,9 +84,9 @@ Write-Host ("Overlaid onto {0}" -f $root)
 
 # --- 3. verify ----------------------------------------------------------------
 $verify = Join-Path $here "verify_copy.ps1"
-if ($WithOptional) {
-    & $verify -ProjectRoot $root
-} else {
+if ($SkipOptional) {
     & $verify -ProjectRoot $root -SkipOptional
+} else {
+    & $verify -ProjectRoot $root
 }
 exit $LASTEXITCODE
