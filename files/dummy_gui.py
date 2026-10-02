@@ -57,6 +57,7 @@ os.environ['ETS_TOOLKIT'] = 'wx'
 #from pyface.qt import QtGui, QtCore
 import pyvista as pv
 from process.detect_artifact import detect_peak
+from files.color_strip import add_color_strip
 
 #from Montage_List import icabutton_callback
 #from ttkthemes import ThemedTk
@@ -373,8 +374,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     print('Ybound: ', y_bound)
     time_range = np.arange(0, numsamples, 10)
     sigtoshow = myvisualsigs[(idx-1), time_range]
-    for j in range(len(time_range) - 1):
-                ax_wave.plot(time_range[j:j+2], [y_bound[0], y_bound[0]], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= 7)
+    add_color_strip(ax_wave, time_range, y_bound[0], plt.cm.jet((20+sigtoshow)/40), 7)
     canvas_wave = FigureCanvasTkAgg(fig_wave, master=CV)
     canvas_wave.draw()
     canvas_wave.get_tk_widget().place(x=1061, y=0)
@@ -401,8 +401,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         yvalues[0:4] = y_position
         data_range = np.arange(2560*(i), 2560*(i+1), 10)
         sigtoshow = signalsin[(idx-1), data_range]
-        for j in range(len(time_range) - 1):
-            ax_ribbon.plot(time_range[j:j+2], yvalues[0:2], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_ribbon, time_range, y_position, plt.cm.jet((20+sigtoshow)/40), (146/numpages)-.6)
     #()
     canvas = FigureCanvasTkAgg(fig_ribbon, master=CV)
     canvas.get_tk_widget().place(x=1043, y=218)
@@ -652,8 +651,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         sigs = epoch[data_range]
         #print('EPOCH: ', sigs)
         #print('Length: ', len(epoch))
-        for j in range(len(time_range)-1):
-            ax_waterfall.plot(time_range[j:j+2], yvalues[0:2], color=cmap(norm(np.log(sigs[j]))), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_waterfall, time_range, y_position, cmap(norm(np.log(sigs))), (146/numpages)-.6)
     canvas = FigureCanvasTkAgg(fig_waterfall, master=CV)
     canvas.get_tk_widget().place(x=1043, y=472)
     ax_waterfall.set_title('Log FFT Waterfall', pad=1)
