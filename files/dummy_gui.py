@@ -31,6 +31,10 @@ if os.environ.get("CLEANEEG_OFFSCREEN", "") not in ("", "0"):
     Canvas = _off.Canvas
     Listbox = _off.Listbox
     Style = _off.Style
+    print("[offscreen] ON - component page composited with Agg, screen not read")
+else:
+    print("[offscreen] OFF - component page will be CAPTURED FROM THE DESKTOP; "
+          "set CLEANEEG_OFFSCREEN=1 to composite instead")
 #  ---------------------------------------------------------------------------
 from matplotlib.figure import Figure
 from scipy.interpolate import griddata

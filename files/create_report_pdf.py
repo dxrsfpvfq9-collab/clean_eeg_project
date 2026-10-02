@@ -1061,6 +1061,12 @@ def save_gui_screenshot(window):
     if render is not None:
         return render()
 
+    # Reaching here means a real screen grab. That is correct on a workstation
+    # and wrong on a server, where it silently captures whatever the desktop
+    # happens to show -- a wallpaper, a lock screen, another window. Saying so
+    # makes the mode visible in the watchdog log instead of only in the output.
+    print("[offscreen] OFF - grabbing the desktop for this component page")
+
     # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
     # is visually on top of that region is what gets saved. During a batch run
     # the launching terminal / Claude window can sit over the fullscreen

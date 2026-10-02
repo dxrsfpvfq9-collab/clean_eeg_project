@@ -179,6 +179,18 @@ SHOT_OLD = """def save_gui_screenshot(window):
     window.update_idletasks()
 """
 SHOT_NEW = """def save_gui_screenshot(window):
+    # OFFSCREEN PAGES: process/offscreen_tk.py composites the page itself, so
+    # there is nothing on screen to grab -- and nothing that can be covered,
+    # blanked by a lock screen, or lost when an RDP client disconnects. Without
+    # this branch the offscreen flag has no effect HERE and every component page
+    # is a photograph of the desktop, which is what the dev server produced on
+    # 2026-09-29 while its brain pages (which never call this) were perfect.
+    render = getattr(window, "render_offscreen", None)
+    if render is not None:
+        return render()
+
+    print("[offscreen] OFF - grabbing the desktop for this component page")
+
     # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
     # is visually on top of that region is what gets saved. Force THIS window to
     # the very top (topmost + raised + focused) and let the window manager
