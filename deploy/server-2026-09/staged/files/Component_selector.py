@@ -407,7 +407,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
 
     
     #GET TMATRIX FILE----------------------------------------------------------------------------------------------------------------------------------------------------------
-    print('IN SOURCE LOCALIZATION FUNCTION')
+    #print('IN SOURCE LOCALIZATION FUNCTION')
     cwd = os.getcwd()
     file_path = os.path.join(cwd, '19chan.sLoreta.none.csv')
     #REORDER ICA MIXING TO DISCOVERY ORDER-------------------------------------------------------------------------------------------------------------------------------------
@@ -416,7 +416,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         string_index_map = {string: index for index, string in enumerate(channel_labels_short)}
     #print('ICA Before Sorting: ', icamixing)
         channel_labels_disc_sorted = sorted(channel_labels_short, key=lambda x: disc_order.index(x))
-        print('CHANNEL LABELS', channel_labels_disc_sorted) 
+        #print('CHANNEL LABELS', channel_labels_disc_sorted) 
         reordered_ica_mixing = []
     
         for string in channel_labels_disc_sorted:
@@ -438,15 +438,15 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         matrix_data = [row[2:21] for row in reader]
 
     matrix = np.array(matrix_data, dtype=float)
-    print('MATRIX SHAPE: ', matrix.shape)
+    #print('MATRIX SHAPE: ', matrix.shape)
     #print(matrix)
     vector = ordered_ica_mixing[:, idx-1]
     vector = vector[:19]
     mult_result = vector_matrix_multiplication(matrix, vector)
-    print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
+    #print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
     #print(mult_result)
     reshaped_list = np.reshape(mult_result, (6239, 3))
-    print("RESHAPED LIST: ", reshaped_list)
+    #print("RESHAPED LIST: ", reshaped_list)
     #CREATE CSD BASED OFF DOT PRODUCT RESULT---------------------------------------------------------------------------------------------------------------------------------------
     voxel_csd = []
     for i in range(0, len(mult_result), 3):
@@ -454,19 +454,19 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         sum_of_squares = sum(k**2 for k in xyz)
         new_val = math.sqrt(sum_of_squares)
         voxel_csd.append(new_val)
-    print('CSD SHAPE: ', len(voxel_csd))
+    #print('CSD SHAPE: ', len(voxel_csd))
     #FIND THE MAX----------------------------------------------------------------------------------------------------------------------------------------------------------------
     max_value = max(voxel_csd)
     max_index = voxel_csd.index(max_value)
-    print("Maximum value:", max_value)
-    print("Index of maximum value:", max_index)
+    #print("Maximum value:", max_value)
+    #print("Index of maximum value:", max_index)
     #GET LOCATION OF SOURCE VOXEL-----------------------------------------------------------------------------------------------------------------------------------------------
     location_file_path = os.path.join('MNI-BAs-6239-voxels.csv')
     with open(location_file_path, 'r') as file:
         location_data = csv.reader(file)
         location_matrix = np.array(list(location_data), dtype=str)
     #print(location_matrix)
-    print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
+    #print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
    
     #ACQUIRE SOURCE POINT--------------------------------------------------------------------------------------------------------------------------------------------------------
     source_point = location_matrix[max_index, :]
