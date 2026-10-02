@@ -298,10 +298,18 @@ class NewFileHandler(FileSystemEventHandler):
         path = getattr(event, "dest_path", None) or event.src_path
         if not path.lower().endswith(".edf"):
             return
+        # watchdog marks the events it invents itself. On Windows a new
+        # directory makes the emitter os.walk() it and emit a SYNTHETIC create
+        # for every file already inside (read_directory_changes.py ~90), and the
+        # real notification for that same file arrives as well -- which is the
+        # whole source of the doubling. Logging which kind arrived turns a
+        # confusing repeat into a one-line explanation.
+        if getattr(event, "is_synthetic", False):
+            how += "/synthetic"
         if not _claim(path):
             _emit("DUPLICATE %s event ignored: %s" % (how, path))
             return
-        _emit("QUEUED: " + str(path))
+        _emit("QUEUED (%s): %s" % (how, path))
         panel_q.put(path)
 
     def on_created(self, event):
