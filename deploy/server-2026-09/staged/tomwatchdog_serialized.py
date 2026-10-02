@@ -224,13 +224,17 @@ def _free_gb(path):
         return float("nan")
 
 
-def _run(script, path, timeout):
+def _run(script, path, timeout, tag):
     """Run one pipeline pass, killing the whole tree if it overruns.
 
     The child's stdout and stderr are relayed line by line so its output --
     above all, its traceback -- reaches the log file instead of only the
     console. A reader thread does the pumping so the wait() timeout still
     applies; iterating the pipe on this thread would block past the cap.
+
+    Each relayed line carries the worker's tag ("P" panel, "C" cascade). The
+    two workers run concurrently, so without it their output interleaves
+    line by line and a multi-line numpy print from one is split by the other.
     """
     proc = subprocess.Popen([sys.executable, script, path],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -239,7 +243,7 @@ def _run(script, path, timeout):
     def _pump():
         try:
             for line in proc.stdout:
-                _emit("    | " + line.rstrip(chr(10)), stamp=False)
+                _emit("    %s| %s" % (tag, line.rstrip(chr(10))), stamp=False)
         except Exception:
             pass
 
@@ -273,7 +277,7 @@ def panel_worker():
             _emit("PANEL START: %s  (panels waiting %d, cascades waiting %d, %.1f GB free)"
                   % (path, panel_q.qsize(), cascade_q.qsize(), free))
             t0 = time.time()
-            rc = _run("module7.py", path, PANEL_TIMEOUT)
+            rc = _run("module7.py", path, PANEL_TIMEOUT, "P")
             _emit("  PANEL in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
             if CASCADE_PASS:
                 cascade_q.put(path)
@@ -290,7 +294,7 @@ def cascade_worker():
         try:
             _emit("CASCADE START: %s  (cascades waiting %d)" % (path, cascade_q.qsize()))
             t0 = time.time()
-            rc = _run("run_cascade.py", path, CASCADE_TIMEOUT)
+            rc = _run("run_cascade.py", path, CASCADE_TIMEOUT, "C")
             _emit("  CASCADE in %ds  rc=%s  %s" % (time.time() - t0, rc, path))
         except Exception as exc:
             _emit("  ERROR in cascade pass for %s -> %r" % (path, exc))
