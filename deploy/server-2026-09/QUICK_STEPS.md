@@ -3,8 +3,8 @@
 Do this on the development server first, then on production.
 
 The server now processes each study in **two passes**: `module7.py` writes the
-brain panel in seconds, then `run_cascade.py` adds the image cascade over the
-following minutes. The practitioner sees the panel straight away, and a cascade
+brain panel within minutes, then `run_cascade.py` adds the image cascade
+afterwards. The practitioner gets the panel without waiting for the cascade, and a cascade
 failure can no longer destroy the panel, because the panel is already written.
 
 ## Before you start
@@ -57,6 +57,7 @@ Ctrl-C the running `tomwatchdog.py`. Then, in that same console window:
 
 ```
 set CLEANEEG_NO_BRAIN=0
+set CLEANEEG_OFFSCREEN=1
 ```
 
 - development server:
@@ -76,22 +77,41 @@ an elevated prompt:
 setx CLEANEEG_NO_BRAIN 0 /M
 ```
 
+**The component pages must be drawn off-screen — set `CLEANEEG_OFFSCREEN=1`.**
+Without it the cascade builds each component page as a window and photographs
+the desktop, so it needs a live, unlocked, connected screen: a disconnected
+Remote Desktop session, a lock screen or a sleeping display gives black or wrong
+pages with no error. With it the page is composited in memory
+(`process\offscreen_tk.py`) and the screen is never read. The `set` above
+covers this console window only; start the watchdog from the same window.
+
 **4. Upload one study and check the result.**
 
-The panel appears within seconds; the cascade follows. The console shows:
+The panel comes first; the cascade follows. Panels and cascades run side by
+side, so a new upload's panel never waits behind an earlier study's cascade;
+cascades themselves run one at a time. The console (and
+`logs\watchdog-YYYY-MM-DD.log` next to the watchdog) shows something like:
 
 ```
-QUEUED: ...
-PROCESSING: ...  (queue depth 0, N GB free)
-  PANEL in 6s  rc=0
-CASCADE OK: ...imagecascade.pdf (20956093 bytes)
-  CASCADE in 66s  rc=0
-  DONE in 73s  ...
+14:02:11  QUEUED (created): ...\study.edf
+14:02:17  PANEL START: ...\study.edf  (panels waiting 0, cascades waiting 0, 39.4 GB free)
+    P| [offscreen] ON - component page composited with Agg, screen not read
+    P| ...
+14:06:39    PANEL in 262s  rc=0  ...\study.edf
+14:06:39  CASCADE START: ...\study.edf  (cascades waiting 0)
+    C| [offscreen] ON - component page composited with Agg, screen not read
+    C| ...
+    C| CASCADE OK: ...\study.imagecascade.pdf (30961075 bytes)
+15:29:43    CASCADE in 4984s  rc=0  ...\study.edf
 ```
 
-(Those timings are a short sample recording on a workstation. A full-length
-study on the server takes longer — the panel still in seconds, the cascade in
-minutes.)
+Lines starting `P|` come from the panel pass and `C|` from the cascade pass;
+the two interleave while both run. **Check for `[offscreen] ON`.** If it reads
+`[offscreen] OFF`, the variable was not set in the window the watchdog was
+started from — Ctrl-C, `set CLEANEEG_OFFSCREEN=1`, and start it again.
+
+(Those timings are from the development server, before the October 2026
+colour-strip speed-up; see "How long a study takes" below.)
 
 Then check, next to the EDF:
 
@@ -110,11 +130,14 @@ with no argument, in the console session kept logged in from the dev server.
 
 ## How long a study takes
 
-The panel is seconds. The cascade is minutes to tens of minutes, and it is much
-slower on a cloud VM over Remote Desktop than on a workstation — the dev server
-exceeded 25 minutes on one study. The watchdog allows the cascade 90 minutes
-(`CASCADE_TIMEOUT`) and the panel 10 (`PANEL_TIMEOUT`); a pass past its cap is
-killed so one bad study cannot stall the queue.
+The panel takes about 2–5 minutes on the development server for a 3–10 minute
+recording. The cascade is much longer and far slower on a cloud VM than on a
+workstation: about 80 minutes for a 10-minute, 20-component study on the
+development server before the October 2026 colour-strip speed-up
+(`files\color_strip.py`), which made each component roughly 4× faster in a
+local profile (the component page itself about 8×). The watchdog allows the panel 10 minutes (`PANEL_TIMEOUT`) and
+the cascade 4 hours (`CASCADE_TIMEOUT`); a pass past its cap is killed. The
+cascade cap is there to catch a genuine hang, not to ration throughput.
 
 Watch the `CASCADE in Ns` line on the first few studies to learn the real number
 for that machine. If cascades take longer than studies arrive, the queue grows

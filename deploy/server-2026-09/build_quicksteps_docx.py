@@ -136,9 +136,9 @@ rich([("Four steps on each server. Do the development server first; when its "
        "through your normal Remote Desktop session \u2014 no scripts required.", "")],
      after=6)
 rich([("Each study is now processed in ", ""), ("two passes", "b"),
-      (": the brain panel is written first, in seconds, and the image cascade "
-       "follows over the next few minutes. The panel reaches the practitioner "
-       "straight away, and a cascade failure can no longer destroy it.", "")],
+      (": the brain panel is written first, within minutes, and the image cascade "
+       "follows. The panel reaches the practitioner without waiting for the "
+       "cascade, and a cascade failure can no longer destroy it.", "")],
      after=10)
 
 # ---- what changes ----------------------------------------------------------
@@ -178,10 +178,14 @@ table(["File", "Goes into", "What it does"],
        ("files" + BS + "Montage_6.py", files_dir, "cascade rendering"),
        ("files" + BS + "dummy_gui.py", files_dir, "cascade component pages"),
        ("files" + BS + "Component_selector.py", files_dir, "same fixes, kept in sync"),
+       ("files" + BS + "color_strip.py", files_dir,
+        "new — faster component pages; the two above need it"),
        ("files" + BS + "create_report_pdf.py", files_dir, "cascade screen capture"),
        ("files" + BS + "deidentify.py", files_dir, "new \u2014 masks names on cascade pages"),
        ("process" + BS + "brain_render.py", "project" + BS + "process" + BS,
         "new \u2014 brain pages, no OpenGL"),
+       ("process" + BS + "offscreen_tk.py", "project" + BS + "process" + BS,
+        "new \u2014 component pages without the screen"),
        ("mne_data" + BS + "  (whole folder)", proj_dir,
         "brain surfaces, ~25 MB; merge"),
        ("run_cascade.py", proj_dir, "new \u2014 the cascade pass"),
@@ -206,12 +210,16 @@ code_block(["Component_selector.py", "Montage_6.py", "create_report_pdf.py",
             "edftotextbynameplotproc.py"])
 
 doc.add_heading("2.  Paste the new files in", level=2)
-bullet([("Copy the seven ", ""), (".py", "code"), (" files from ", ""),
+bullet([("Copy the eight ", ""), (".py", "code"), (" files from ", ""),
         ("staged" + BS + "files" + BS, "code"), (" into the project\u2019s ", ""),
         ("files" + BS, "code"), (" folder. Say ", ""), ("Yes", "b"),
-        (" to overwrite.", "")])
-bullet([("Copy ", ""), ("staged" + BS + "process" + BS + "brain_render.py", "code"),
-        (" into the project\u2019s ", ""), ("process" + BS, "code"), (" folder.", "")])
+        (" to overwrite. Two are new: ", ""), ("deidentify.py", "code"),
+        (" and ", ""), ("color_strip.py", "code"), (" \u2014 without ", ""),
+        ("color_strip.py", "code"), (" the cascade cannot start.", "")])
+bullet([("Copy both files from ", ""), ("staged" + BS + "process" + BS, "code"),
+        (" (", ""), ("brain_render.py", "code"), (", ", ""),
+        ("offscreen_tk.py", "code"), (") into the project\u2019s ", ""),
+        ("process" + BS, "code"), (" folder.", "")])
 bullet([("Copy the ", ""), ("staged" + BS + "mne_data", "code"),
         (" folder into the project folder. If the project already has one, let it "
          "merge and say ", ""), ("Yes", "b"),
@@ -226,11 +234,18 @@ doc.add_heading("3.  Swap the watchdog", level=2)
 rich([("In the console window where ", ""), ("tomwatchdog.py", "code"),
       (" is running, press ", ""), ("Ctrl-C", "b"),
       (". Then, in that same window:", "")], after=4, keep=True)
-code_block(["set CLEANEEG_NO_BRAIN=0"])
-rich([("That makes sure the brain pages are ", ""), ("on", "b"),
+code_block(["set CLEANEEG_NO_BRAIN=0", "set CLEANEEG_OFFSCREEN=1"])
+rich([("The first line makes sure the brain pages are ", ""), ("on", "b"),
       (". An earlier version of these steps set ", ""), ("CLEANEEG_NO_BRAIN=1", "code"),
       (" on the servers because the old brain pages needed OpenGL. They no longer "
        "do, so the variable must be 0 or unset.", "")],
+     after=4)
+rich([("The second line is required. ", "b"),
+      ("It draws the component pages in memory. Without it the cascade "
+       "photographs the desktop, so a disconnected Remote Desktop session, a lock "
+       "screen or a sleeping display gives black or wrong pages with no error. "
+       "Both lines cover this console window only — start the watchdog from "
+       "the same window.", "")],
      after=6)
 rich([("Now start the new watchdog. ", ""), ("Development server:", "b")],
      after=2, keep=True)
@@ -250,16 +265,27 @@ rich([("If you ran ", ""), ("setx CLEANEEG_NO_BRAIN 1 /M", "code"),
      after=8)
 
 doc.add_heading("4.  Upload one study and check the result", level=2)
-rich([("The panel appears within seconds; the cascade follows. The console "
-       "shows:", "")], after=4, keep=True)
-code_block(["PROCESSING: ...  (queue depth 0, N GB free)",
-            "  PANEL in 6s  rc=0",
-            "CASCADE OK: ...imagecascade.pdf",
-            "  CASCADE in 66s  rc=0",
-            "  DONE in 73s  ..."])
-rich([("Those timings are a short sample recording. A full-length study takes "
-       "longer \u2014 the panel still in seconds, the cascade in minutes. Then check "
-       "the files next to the EDF:", "")], after=4, keep=True)
+rich([("The panel comes first; the cascade follows. Panels and cascades run "
+       "side by side, so a new panel never waits behind an earlier cascade. The "
+       "console (and ", ""), ("logs" + BS + "watchdog-YYYY-MM-DD.log", "code"),
+      (") shows something like:", "")], after=4, keep=True)
+code_block(["14:02:11  QUEUED (created): ..." + BS + "study.edf",
+            "14:02:17  PANEL START: ..." + BS + "study.edf  (panels waiting 0, ...)",
+            "    P| [offscreen] ON - component page composited with Agg, ...",
+            "14:06:39    PANEL in 262s  rc=0  ...",
+            "14:06:39  CASCADE START: ..." + BS + "study.edf  (cascades waiting 0)",
+            "    C| [offscreen] ON - component page composited with Agg, ...",
+            "    C| CASCADE OK: ..." + BS + "study.imagecascade.pdf (30961075 bytes)",
+            "15:29:43    CASCADE in 4984s  rc=0  ..."])
+rich([("P|", "code"), (" lines come from the panel pass, ", ""), ("C|", "code"),
+      (" from the cascade pass. ", ""), ("Check for ", "b"),
+      ("[offscreen] ON", "code"), (".", "b"), (" If it says ", ""),
+      ("OFF", "code"), (", Ctrl-C, run ", ""), ("set CLEANEEG_OFFSCREEN=1", "code"),
+      (" in that window and start the watchdog again.", "")], after=4)
+rich([("Those timings are from the development server before the October 2026 "
+       "speed-up: panel 2\u20135 minutes, cascade about 80 minutes for a 10-minute "
+       "recording. Each cascade component is now roughly 4\u00d7 faster. Then "
+       "check the files next to the EDF:", "")], after=4, keep=True)
 
 chk = doc.add_table(rows=1, cols=3)
 chk.style = "Table Grid"
@@ -340,18 +366,15 @@ bullet([("Why two passes: ", "b"),
          "is exactly what the OpenGL failure did on the dev server. Split in two, "
          "the panel is on disk before the cascade starts.", "")])
 bullet([("Why the watchdog changes: ", "b"),
-        ("the old one starts a new process for every upload with no limit. Two "
-         "cascades rendering at once each capture the other\u2019s window, and the "
-         "result is wrong with no error. The new one runs one study at a time, "
-         "waits for an upload to finish writing, and kills anything past 25 "
-         "minutes.", "")])
-bullet([("Development server only: ", "b"),
-        ("its screen is live only while you are connected. Stay connected while a "
-         "cascade renders. Production is unaffected \u2014 its session is held by the "
-         "console logged in from dev.", "")])
-bullet([("Screen saver / lock screen: ", "b"),
-        ("keep both off on any machine rendering cascades. A lock screen firing "
-         "mid-render produces black pages.", "")])
+        ("the old one starts a new process for every upload with no limit. The new "
+         "one waits for an upload to finish writing, ignores duplicate events for "
+         "the same file, runs panels alongside cascades but cascades one at a time, "
+         "and kills a panel past 10 minutes or a cascade past 4 hours.", "")])
+bullet([("Screen: ", "b"),
+        ("with ", ""), ("CLEANEEG_OFFSCREEN=1", "code"),
+        (" the cascade never reads the screen, so disconnecting from the server, "
+         "a lock screen or a screen saver does not affect it. Without the variable "
+         "all three produce black or wrong pages.", "")])
 bullet([("Older panels: ", "b"),
         ("every panel issued before this update carries the bogus Global STD row. "
          "Nothing else on them is wrong; their out-of-bounds count is one too "
