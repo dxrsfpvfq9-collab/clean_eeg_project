@@ -29,7 +29,7 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `process\offscreen_tk.py` | project `process\` | 15246 |
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
 | `run_cascade.py` | project folder | 2661 |
-| `tomwatchdog_serialized.py` | project folder | 17863 |
+| `tomwatchdog_serialized.py` | project folder | 19338 |
 | `staged-optional\process\detect_artifact.py` | project `process\` | 60659 |
 
 `detect_artifact.py` sits in `staged-optional\` for historical reasons (it was
@@ -123,8 +123,12 @@ started from — Ctrl-C, `set CLEANEEG_OFFSCREEN=1`, and start it again.
 Windows console, selecting text (QuickEdit) pauses all output to that window,
 and that pause blocks the running panel or cascade until the selection is
 cleared: no error, 0% CPU, no new files. The watchdog now turns QuickEdit off
-for its own window at startup and prints `console QuickEdit: OFF ...`. If you
-ever see a stall and the window title starts with **Select**, press **Esc**.
+for its own window at startup (it prints `console QuickEdit: OFF ...`) and
+writes to the console from a separate thread, so even a Ctrl+A selection only
+pauses the window — the study keeps running and the log keeps every line. When
+the selection clears, the window says how many lines it skipped. Press **Esc**
+to clear a selection (title starts with **Select**). Do not press Ctrl+C in
+that window when nothing is selected: it stops the watchdog and the running study.
 
 (Those timings are from the development server, before the October 2026
 colour-strip speed-up; see "How long a study takes" below.)

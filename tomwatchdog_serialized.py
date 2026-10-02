@@ -111,18 +111,57 @@ def _log_path():
     return os.path.join(LOG_DIR, "watchdog-%s.log" % time.strftime("%Y-%m-%d"))
 
 
+# CONSOLE DECOUPLING: the console is written by its own thread, never by the
+# caller. A paused console (any selection -- mouse, or Ctrl+A, which QuickEdit-off
+# does not prevent) then blocks only that thread. _emit keeps returning, the
+# relay keeps draining the child's pipe, the log file keeps growing, and the
+# study finishes. Lines that arrive while the queue is full are dropped from the
+# CONSOLE only and counted; the log file always gets every line.
+_CONSOLE_MAX = 20000
+_console_q = queue.Queue(maxsize=_CONSOLE_MAX)
+_console_dropped = 0
+_console_lock = threading.Lock()
+
+
+def _console_writer():
+    while True:
+        text = _console_q.get()
+        try:
+            print(text)
+        except Exception:
+            pass
+
+
+threading.Thread(target=_console_writer, daemon=True).start()
+
+
+def _to_console(text):
+    global _console_dropped
+    with _console_lock:
+        try:
+            if _console_dropped:
+                _console_q.put_nowait("    [console paused: %d line(s) not shown"
+                                      " here -- they are in the log file]"
+                                      % _console_dropped)
+                _console_dropped = 0
+            _console_q.put_nowait(text)
+        except queue.Full:
+            _console_dropped += 1
+
+
 def _emit(*parts, **kw):
     """Write one line to the console and to today's log file.
 
     Accepts several arguments like print() does: a worker thread must not be
     killable by a TypeError from its own logging call, which is exactly what
     happened when this took a single argument and a caller passed three.
+    Never blocks on the console -- see CONSOLE DECOUPLING above.
     """
     stamp = kw.get("stamp", True)
     line = " ".join(str(p) for p in parts)
     global _log_fh
     text = ("%s  %s" % (time.strftime("%H:%M:%S"), line)) if stamp else line
-    print(text)
+    _to_console(text)
     try:
         with _log_lock:
             want = _log_path()
@@ -143,8 +182,9 @@ def _emit(*parts, **kw):
 # pipe fills, and the child freezes mid-print at 0% CPU -- no error, no log
 # line. Seen on the dev server 2026-10-02: a cascade sat dead for 10+ minutes
 # because log text had been selected to copy; Esc released it. Turning QuickEdit
-# off for this console makes a click or drag harmless. Copy log text from
-# logs\watchdog-*.log instead (or re-enable it via the window's Properties).
+# off for this console makes a click or drag harmless. Ctrl+A still selects (it
+# froze the dev server again the same day), which is why _emit no longer prints
+# directly -- see CONSOLE DECOUPLING. Copy log text from logs\watchdog-*.log.
 def _disable_quickedit():
     if os.name != "nt":
         return "not Windows"

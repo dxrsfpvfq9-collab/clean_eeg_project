@@ -297,10 +297,14 @@ rich([("Copy log text from ", "b"), ("logs\\watchdog-*.log", "code"),
       ("Selecting text in a Windows console pauses all output to it, and that "
        "pause freezes the running panel or cascade until the selection is "
        "cleared — no error, no new files. The watchdog now switches this off "
-       "for its own window and prints ", ""),
+       "for its own window (it prints ", ""),
       ("console QuickEdit: OFF", "code"),
-      (". If a run ever stalls and the window title starts with ", ""),
-      ("Select", "b"), (", press ", ""), ("Esc", "b"), (".", "")], after=4)
+      (") and writes to the console from a separate thread, so even a Ctrl+A "
+       "selection only pauses the window: the study keeps running and the log "
+       "keeps every line. Clear a selection with ", ""),
+      ("Esc", "b"), (" (title starts with ", ""), ("Select", "b"),
+      ("). Never press Ctrl+C there with nothing selected — it stops the "
+       "watchdog and the running study.", "")], after=4)
 rich([("Those timings are from the development server before the October 2026 "
        "speed-up: panel 2\u20135 minutes, cascade about 80 minutes for a 10-minute "
        "recording. Each cascade component is now roughly 4\u00d7 faster. Then "

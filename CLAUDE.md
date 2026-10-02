@@ -491,8 +491,11 @@ z-scores meaningless on those rows.
   blocks, the relay stops draining the child's pipe, and the panel/cascade
   freezes mid-print at 0% CPU with no error (dev server 2026-10-02, 10+ min,
   released by Esc). `tomwatchdog_serialized.py` now clears QuickEdit on its own
-  console at startup (`_disable_quickedit`). Copy log text from
-  `logs\watchdog-*.log`, not the console.
+  console at startup (`_disable_quickedit`). That alone was not enough — Ctrl+A
+  still selects, and froze it again the same day — so `_emit` no longer prints:
+  it queues to a console-writer thread (bounded, 20000 lines; overflow dropped
+  from the console only and reported, never from the log). A paused console now
+  stalls nothing. Copy log text from `logs\watchdog-*.log`, not the console.
 - **ICA IS deterministic.** `FastICA(..., random_state=0)` has been set
   since the `d4f522c` baseline, so re-running the same EDF on the same
   code reproduces the same metrics. Verified 2026-09-10: a dev re-run of
