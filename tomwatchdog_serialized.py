@@ -10,6 +10,11 @@
 # an error. This version feeds one worker thread from a queue so exactly one
 # study renders at a time.
 #
+# ALSO: the same upload can fire MORE THAN ONE creation event, and the original
+# handler launched a process for each. Seen on the production console
+# 2026-10-02: one .edf logged "on_created is called" twice and two module7
+# processes wrote the same .icale.rep.pdf concurrently. See DEDUP_WINDOW below.
+#
 # ALSO: on_created fires when the file APPEARS, which for a 6-8 MB EDF arriving
 # over HTTP is well before the last byte lands. Panel-only that usually
 # survived because processing started slowly; it is a real risk either way, and
@@ -144,6 +149,45 @@ def _emit(*parts, **kw):
 panel_q = queue.Queue()
 cascade_q = queue.Queue()
 
+# DE-DUPLICATION: the filesystem fires more than one creation event per upload.
+#
+# Observed on the production console 2026-10-02: a single uploaded study logged
+# "on_created is called" TWICE for the same .edf and the old watchdog launched
+# two module7.py processes for it, which then wrote the same .icale.rep.pdf at
+# the same time. (The second file of the same upload fired only once, so it is
+# not every file -- a plain "ignore the second event" rule would be wrong.)
+# Windows reports a create and then further change/create notifications while
+# IIS is still writing, and watchdog surfaces them as separate events.
+#
+# Queueing twice was merely wasteful when the panel was the only pass. With
+# cascades on it means a second ~80-minute render of a study already rendered,
+# and two processes racing on one output file.
+#
+# A path is ignored if it was queued within DEDUP_WINDOW. The window must
+# outlast the whole two-pass run, or a duplicate event arriving late (after the
+# panel, while the cascade is going) would still queue -- hence it is derived
+# from the cascade cap rather than being a small fixed number. A genuine
+# re-upload of the same path after that is processed normally, which is what
+# a practitioner replacing a bad recording expects.
+DEDUP_WINDOW = max(CASCADE_TIMEOUT if CASCADE_PASS else 0, PANEL_TIMEOUT) + 600
+_recent = {}
+_recent_lock = threading.Lock()
+
+
+def _claim(path):
+    """True if this path is ours to process; False if it is a duplicate event."""
+    key = os.path.normcase(os.path.abspath(path))
+    now = time.time()
+    with _recent_lock:
+        for k, t in list(_recent.items()):
+            if now - t > DEDUP_WINDOW:
+                del _recent[k]
+        prev = _recent.get(key)
+        if prev is not None:
+            return False
+        _recent[key] = now
+    return True
+
 def _wait_until_settled(path):
     """Block until path's size stops changing. False if it never settles."""
     stable = 0
@@ -248,14 +292,26 @@ def cascade_worker():
 
 
 class NewFileHandler(FileSystemEventHandler):
-    def on_created(self, event):
+    def _offer(self, event, how):
         if event.is_directory:
             return
-        path = event.src_path
+        path = getattr(event, "dest_path", None) or event.src_path
         if not path.lower().endswith(".edf"):
+            return
+        if not _claim(path):
+            _emit("DUPLICATE %s event ignored: %s" % (how, path))
             return
         _emit("QUEUED: " + str(path))
         panel_q.put(path)
+
+    def on_created(self, event):
+        self._offer(event, "created")
+
+    def on_moved(self, event):
+        # Some uploaders write to a temp name and rename into place, in which
+        # case the .edf never gets a creation event at all. Harmless to watch
+        # both now that duplicates are filtered.
+        self._offer(event, "moved")
 
 
 if __name__ == "__main__":
