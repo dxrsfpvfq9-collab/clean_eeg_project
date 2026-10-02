@@ -17,12 +17,12 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 
 | Copy this | Into | Bytes |
 |---|---|---|
-| `files\Component_selector.py` | project `files\` | 61584 |
+| `files\Component_selector.py` | project `files\` | 61586 |
 | `files\Montage_6.py` | project `files\` | 55286 |
 | `files\color_strip.py` | project `files\` | 1767 |
 | `files\deidentify.py` | project `files\` | 3967 |
 | `files\create_report_pdf.py` | project `files\` | 60041 |
-| `files\dummy_gui.py` | project `files\` | 56801 |
+| `files\dummy_gui.py` | project `files\` | 56803 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
 | `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
 | `process\brain_render.py` | project `process\` | 21032 |

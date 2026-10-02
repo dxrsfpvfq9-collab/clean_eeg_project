@@ -742,7 +742,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         epoch_vals.append(amp_sc)
         phases.append(phase)
         power_s = np.abs(power_s)
-        print('Length is: ', len(power_s))
+        #print('Length is: ', len(power_s))
         powers.append(power_s)
         #FFT OF POWER SPECTRUM
         #cyc_fft = np.fft.fft(amp_sc)
@@ -755,7 +755,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
     avg_amp_sc = sum(epoch_vals) / len(epoch_vals)
     avg_unsmooth = sum(ffts) / len(ffts)
     avg_power = sum(powers) / len(powers)
-    print(avg_power[1920:])
+    #print(avg_power[1920:])
     #i_fft = np.fft.ifft(avg_amp_sc)
     #print('length: ', len(i_fft))
     #i_fft = np.real(i_fft)
