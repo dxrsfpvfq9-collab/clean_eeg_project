@@ -33,6 +33,7 @@ step, for when a result looks off. This file explains what changed and why.
 | `files/Montage_6.py` | Re-enable overview `savefig`; sort pages by component %; renumber components by magnitude | whole file |
 | `files/dummy_gui.py` | Head-map scale/sign fixes; Cepstrum panel replaced by Periodicity; `dummy_brain` draws without OpenGL | whole file |
 | `files/Component_selector.py` | Same Periodicity panel + renumbered button grid, for the interactive GUI | whole file |
+| `files/color_strip.py` | **new** — colour strips as one LineCollection; component page ~8× faster, pixel-identical. Imported by `dummy_gui.py` and `Component_selector.py` | new file |
 | `process/brain_render.py` | **new** — the OpenGL-free brain page | new file |
 | `files/deidentify.py` | **new** — masks likely names in the study file name on cascade pages (HIPAA) | new file |
 | `mne_data/MNE-fsaverage-data/fsaverage/surf/{lh,rh}.{pial,white,sulc}` | fsaverage surfaces the brain page draws (~25 MB) | data, identical to the mirrors' |

@@ -17,17 +17,21 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 
 | Copy this | Into | Bytes |
 |---|---|---|
-| `files\Component_selector.py` | project `files\` | 61752 |
-| `files\Montage_6.py` | project `files\` | 53766 |
+| `files\Component_selector.py` | project `files\` | 61584 |
+| `files\Montage_6.py` | project `files\` | 55286 |
+| `files\color_strip.py` | project `files\` | 1767 |
 | `files\deidentify.py` | project `files\` | 3967 |
-| `files\create_report_pdf.py` | project `files\` | 57227 |
-| `files\dummy_gui.py` | project `files\` | 55632 |
+| `files\create_report_pdf.py` | project `files\` | 60041 |
+| `files\dummy_gui.py` | project `files\` | 56801 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
 | `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
 | `process\brain_render.py` | project `process\` | 21032 |
+| `process\offscreen_tk.py` | project `process\` | 15246 |
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
 | `run_cascade.py` | project folder | 2661 |
-| `tomwatchdog_serialized.py` | project folder | 8001 |
+| `tomwatchdog_serialized.py` | project folder | 16336 |
+
+`SHA256SUMS.txt` is the authority if a size here disagrees with it.
 
 "Project folder" is the directory containing `module7.py` — on the development
 server that is `C:\app\MyCleanEEG\CleanEEGProject`.
@@ -40,8 +44,9 @@ these into it: `Component_selector.py`, `Montage_6.py`, `create_report_pdf.py`,
 `dummy_gui.py`, `edftotextbycommandplotproc.py`, `edftotextbynameplotproc.py`.
 
 **2. Paste the new files in.**
-Seven into `files\` (six overwrite; `deidentify.py` is new), `brain_render.py`
-into `process\`, and
+Eight into `files\` (six overwrite; `deidentify.py` and `color_strip.py` are
+new — `dummy_gui.py` and `Component_selector.py` fail to import without
+`color_strip.py`), `brain_render.py` + `offscreen_tk.py` into `process\`, and
 `run_cascade.py` + `tomwatchdog_serialized.py` into the project folder next to
 `module7.py`. Copy the `mne_data` folder into the project folder too; if one is
 already there, let it merge and overwrite — the six surface files are identical

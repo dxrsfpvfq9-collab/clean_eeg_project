@@ -15,6 +15,7 @@ nothing else.
   3. Cascade display work    -> files/Montage_6.py
      (Periodicity panel,        files/dummy_gui.py
       component renumbering)    files/Component_selector.py
+                                files/color_strip.py (new; strip speed-up)
   4. OpenGL-free brain pages -> process/brain_render.py
                                 mne_data/.../fsaverage/surf/{lh,rh}.{pial,white,sulc}
 
@@ -168,6 +169,14 @@ copy_dev("files/dummy_gui.py")
 #     PDFs show the new ones -- including a button grid that disagrees with the
 #     PDFs it just produced. Verified to import nothing production lacks.
 copy_dev("files/Component_selector.py")
+
+# 2c-ter. color_strip.py -- NEW file, imported by BOTH dummy_gui.py and
+#     Component_selector.py above. Draws each colour strip (waveform bar, Bath
+#     Water Graph, Log FFT Waterfall) as one LineCollection instead of ~50,000
+#     single-segment plot() calls per component page: page 15.6 s -> 1.9 s and
+#     capture 3.2 s -> 0.3 s in a local profile, pixel-identical output. Must
+#     ship with them or both fail to import.
+copy_dev("files/color_strip.py")
 
 # 2d. save_gui_screenshot(): ImageGrab copies raw SCREEN pixels, so anything
 #     covering the component window lands in the PDF instead. Force the window
