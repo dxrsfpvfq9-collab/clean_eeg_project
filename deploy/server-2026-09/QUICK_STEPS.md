@@ -18,7 +18,7 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | Copy this | Into | Bytes |
 |---|---|---|
 | `files\Component_selector.py` | project `files\` | 61595 |
-| `files\Montage_6.py` | project `files\` | 55286 |
+| `files\Montage_6.py` | project `files\` | 56741 |
 | `files\color_strip.py` | project `files\` | 1767 |
 | `files\deidentify.py` | project `files\` | 3967 |
 | `files\create_report_pdf.py` | project `files\` | 60041 |

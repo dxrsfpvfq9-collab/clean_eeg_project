@@ -390,6 +390,15 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             regions_s        = [regions[i]        for i in order]
             areas_s          = [areas[i]          for i in order]
             fft_peaks_s      = [fft_peaks[i]      for i in order]
+            # Mark mains-interference components in the table. The servers run
+            # ICA without the pre-ICA line filter (it would change the
+            # decomposition and so every EC_191 z-score), so on line-contaminated
+            # recordings FastICA spends whole components on 60 Hz. Their
+            # "source" is the power line, so Lobe/Region/Area mean nothing for
+            # them. Display only: fft_peaks keeps the numbers.
+            LINE_LO, LINE_HI = 59.0, 61.0
+            n_line = sum(1 for p in fft_peaks_s if LINE_LO <= p <= LINE_HI)
+            fft_peaks_s = [f"{p} (line)" if LINE_LO <= p <= LINE_HI else p for p in fft_peaks_s]
             # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
             # or, with CLEANEEG_NO_BRAIN, [overview, comp_1, comp_2, ...].
             sorted_screenshots = [screenshots[0]]
@@ -454,7 +463,18 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                     for row_idx in range(num_rows):
                           for col_idx in range(num_columns):
                                 pdf.cell(column_widths[col_idx], 8, str(data_array[col_idx][row_idx]), border=1)
-                          pdf.ln()           
+                          pdf.ln()
+                    if n_line:
+                          # 20 rows already reach ~184 mm; FPDF's default break
+                          # at 190 mm would push this one line onto a page of
+                          # its own, so suspend auto-break while it is drawn.
+                          pdf.set_auto_page_break(False)
+                          pdf.ln(2)
+                          pdf.set_font("Arial", "I", 8)
+                          pdf.cell(0, 5, f"(line) = spectral peak at {LINE_LO:g}-{LINE_HI:g} Hz: power-line interference, "
+                                         "not a brain source. Lobe, Region and Area are not meaningful for these components.")
+                          pdf.set_font("Arial", size=10)
+                          pdf.set_auto_page_break(True, 20)
 
             #TABLE CREATION
               pdf.output(img_cascade_file)  
