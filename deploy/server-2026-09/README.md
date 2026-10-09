@@ -1,5 +1,8 @@
 # Server update — September 2026
 
+> **Status: deployed** — development server 2026-10-02, production 2026-10-08.
+> What went where and how it was verified: `DEPLOYED.md`.
+
 Two changes for the STS EEG screening server:
 
 1. **Fix Global STD** in the Brain Panel (currently prints `1000.00`, z `2642.71`

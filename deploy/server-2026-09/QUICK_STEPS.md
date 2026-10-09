@@ -74,6 +74,17 @@ set CLEANEEG_OFFSCREEN=1
 - production server:
   `py tomwatchdog_serialized.py`
 
+If the window answers `'py' is not recognized` — production has no `py`
+launcher — run the same Python by its full path. On production that is:
+
+```
+c:\users\tcollura\appdata\local\programs\python\python312\python tomwatchdog_serialized.py
+```
+
+The watchdog starts the panel and cascade with whatever Python runs it, so it
+must be the interpreter the old `tomwatchdog.py` used (it has the packages).
+Its `interpreter:` startup line confirms which one it got.
+
 **The brain pages are ON — do not set `CLEANEEG_NO_BRAIN=1`.** An earlier
 version of these steps told you to, because the old brain pages rendered through
 VTK, which needs OpenGL 3.2+ and kills the process on the GPU-less AWS

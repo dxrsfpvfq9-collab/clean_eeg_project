@@ -262,6 +262,11 @@ rich([("Now start the new watchdog. ", ""), ("Development server:", "b")],
 code_block(['py tomwatchdog_serialized.py "c:/app/STSEEGScreening/Source/Practitioners"'])
 rich([("Production server:", "b")], after=2, keep=True)
 code_block(["py tomwatchdog_serialized.py"])
+rich([("If the window answers ", ""), ("'py' is not recognized", "code"),
+      (" (production has no py launcher), run the same Python by its full path "
+       "instead — on production:", "")], after=2, keep=True)
+code_block([BS.join(["c:", "users", "tcollura", "appdata", "local", "programs", "python",
+                     "python312", "python"]) + " tomwatchdog_serialized.py"])
 rich([("It prints ", ""), ("monitor dir:", "code"), (" and ", ""),
       ("interpreter:", "code"),
       (" first \u2014 glance at both. The production path is built in; the development "
@@ -409,7 +414,7 @@ bullet([("Longer documents: ", "b"),
 
 fp = sec.footer.paragraphs[0]
 fp.text = ("deploy" + BS + "server-2026-09" + BS + "Quick Steps  \u2014  "
-           "built from production source, verified 2026-09-29")
+           "built from production source, deployed to production 2026-10-08")
 fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 for r in fp.runs:
     r.font.size = Pt(8)

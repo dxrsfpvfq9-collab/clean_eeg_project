@@ -236,12 +236,20 @@ The old cepstrum block was display-only: its downstream wavelet consumers
 in `Component_selector.py` sit inside a `'''` string and never ran, and
 the table's RSI column comes from `find_suspect_ica_components`.
 
-**Production divergence:** the IMG cascade in dev works and is sorted by
-component %. **Production is still on the December-2024 broken state**:
-the `fig.savefig(icaeditfilename, ...)` call in `files/Montage_6.py` was
-commented out during the Dec-2024 server-operation edits, so attempting
-IMG mode on production raises `FileNotFoundError: ... .ica.png`. To
-enable on production, port the dev changes that landed in this commit.
+**Production:** cascades run on BOTH servers since the 2026-09 update
+(dev 2026-10-02, production 2026-10-08) — two-pass, offscreen, brain pages
+on. See `deploy/server-2026-09/DEPLOYED.md`. Before that, production was on
+the December-2024 broken state (`fig.savefig(icaeditfilename, ...)`
+commented out in `files/Montage_6.py`, so IMG mode raised
+`FileNotFoundError: ... .ica.png`); `backup-2026-09` on the server holds it.
+
+**Line-noise marking (display only).** The summary table's FFT Peak reads
+e.g. `60.0 (line)` for any component peaking at 59–61 Hz, with a footnote
+that it is mains interference and its Lobe/Region/Area mean nothing. This
+is the server-side answer to 60 Hz components, because the pre-ICA filter
+cannot ship (it would desync the cascade's ICA from the panel's). Auto
+page-break is suspended for the footnote: 20 rows already end near FPDF's
+190 mm break.
 
 **Known limitation — windows flash on screen:** during cascade rendering
 a fullscreen Tk window flashes briefly for each component (~19 flashes
@@ -407,10 +415,17 @@ and `[12]` are both unset, so report and cascade modes never hit it.
 ## Production reference
 
 `C:\BrainPanel\CleanEEGProject - production\` is a separate snapshot of
-this codebase as it runs on the production server. As of 2026-05-18 every
-`.py` file in production is **byte-identical** to `d4f522c` (initial
-commit baseline). All changes committed since then are display-only and
-should preserve numerical output.
+this codebase as it ran on the production server **before 2026-10-08**:
+every `.py` file byte-identical to `d4f522c` (initial commit baseline).
+
+**Since 2026-10-08 the servers run the `deploy/server-2026-09/staged` set**
+(plus `staged-optional/process/detect_artifact.py`) under
+`tomwatchdog_serialized.py` — see `deploy/server-2026-09/DEPLOYED.md`. That
+set is built from production source with only the Global STD fix, the
+cascade path and log quieting; it is NOT the dev tree (no PLTS,
+discriminant, page-3 legend or pre-ICA filter). Both servers use
+`C:\app\MyCleanEEG\CleanEEGProject`. **Production has no `py` launcher**:
+run `c:\users\tcollura\appdata\local\programs\python\python312\python`.
 
 There's also `C:\BrainPanel\CleanEEGProject - development\` as a third
 copy.
@@ -437,8 +452,9 @@ z-scores meaningless on those rows.
 
 ## Other quirks worth knowing
 
-- **`Global STD = 1000.00`** — FIXED in dev, still present on the
-  production server. Cause: sklearn >= 1.3 changed `FastICA`'s default
+- **`Global STD = 1000.00`** — FIXED in dev and on both servers
+  (production since 2026-10-08; first study read 2.52). Panels issued
+  before that still show 1000. Cause: sklearn >= 1.3 changed `FastICA`'s default
   whitening to `unit-variance`, forcing every ICA source to std 1; after
   the ×1000 reconstruction scaling (`edftotextbynameplotproc.py:425`)
   `np.std(myfilteredsigs[:])` therefore always lands at 1000, z ~2642.
