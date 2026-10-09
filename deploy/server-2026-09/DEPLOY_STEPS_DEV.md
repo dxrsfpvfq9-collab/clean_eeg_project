@@ -88,10 +88,15 @@ py -c "import sys, numpy, sklearn; print(sys.version.split()[0], numpy.__version
 
 Expect Python 3.12 and numpy 1.x.
 
-- **numpy 1.x** — the main `staged\` set is all you need.
-- **numpy 2.0 or higher** — you must also deploy `staged-optional\`, and be
-  aware this server's existing panels already have four corrupt Moment 3 rows.
-  See the README section "Check the server's numpy version first".
+Either way you deploy both `staged\` and `staged-optional\` in step 6.
+`staged-optional\` holds only `process\detect_artifact.py`, which silences the
+per-epoch alpha debug prints that flood the panel log and pins `int32` in two
+Moment functions. The numpy version only tells you what you already have:
+
+- **numpy 1.x** — the pin is a no-op; the file changes nothing but the log.
+- **numpy 2.0 or higher** — the pin is *required*, and this server's existing
+  panels already have four corrupt Moment 3 rows. See the README section
+  "Check the server's numpy version first".
 
 If `py` is not on PATH, `run2.bat` in the project points at
 `C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe` —
@@ -103,15 +108,10 @@ use that explicitly and substitute it for `py` throughout.
 
 ```powershell
 robocopy "C:\deploy-2026-09\staged" $PROJ /E
-```
-
-If step 5 said numpy 2.x, also:
-
-```powershell
 robocopy "C:\deploy-2026-09\staged-optional" $PROJ /E
 ```
 
-This overwrites six files, adds `tomwatchdog_serialized.py`, `run_cascade.py` and
+This overwrites seven files (six in `files\`, plus `process\detect_artifact.py`), adds `tomwatchdog_serialized.py`, `run_cascade.py` and
 `process\brain_render.py`, and rewrites the six fsaverage surfaces under
 `mne_data\` with identical bytes. `CLEANEEG_NO_BRAIN` must be 0 or unset: the
 brain view no longer needs OpenGL. It does not
@@ -126,15 +126,8 @@ cd C:\deploy-2026-09
 .\verify_copy.ps1 -ProjectRoot $PROJ
 ```
 
-On numpy 1.x, `process/detect_artifact.py` will report MISSING — that is
-expected, since you deliberately skipped the optional file. Add `-SkipOptional`
-to silence it:
-
-```powershell
-.\verify_copy.ps1 -ProjectRoot $PROJ -SkipOptional
-```
-
-Everything else must say OK. A MISMATCH means the copy rewrote line endings —
+Every file must say OK, `process/detect_artifact.py` included. (`-SkipOptional`
+exists only for a server where that file was deliberately left out.) A MISMATCH means the copy rewrote line endings —
 recopy in binary rather than continuing.
 
 ---
@@ -189,8 +182,8 @@ PASS: only Global STD changed. Panel is otherwise identical.
 ```
 
 Anything reporting UNEXPECTED — stop and go to step 13. If the unexpected rows
-are the four Moment 3 rows specifically, that is the numpy issue from step 5,
-not a problem with these changes.
+are the four Moment 3 rows specifically, that is the numpy issue from step 5:
+`process\detect_artifact.py` from `staged-optional\` did not land — recopy it.
 
 ---
 

@@ -15,6 +15,7 @@ nothing else.
   3. Cascade display work    -> files/Montage_6.py
      (Periodicity panel,        files/dummy_gui.py
       component renumbering)    files/Component_selector.py
+                                files/color_strip.py (new; strip speed-up)
   4. OpenGL-free brain pages -> process/brain_render.py
                                 mne_data/.../fsaverage/surf/{lh,rh}.{pial,white,sulc}
 
@@ -49,12 +50,22 @@ def write(relpath, text, crlf):
     print("  staged  " + relpath)
 
 
-def patch(relpath, old, new):
-    """Apply one exact-text replacement to the production copy of relpath."""
-    text, crlf = read(os.path.join(PROD, relpath.replace("/", os.sep)))
+def patch(relpath, old, new, base="prod"):
+    """Apply one exact-text replacement to relpath.
+
+    base="prod" (default) patches the production source -- use it for the FIRST
+    hunk in a file. base="staged" patches what is already staged, so several
+    hunks can accumulate in one file; patching from prod each time would discard
+    the previous hunk.
+    """
+    root = PROD if base == "prod" else STAGED
+    text, crlf = read(os.path.join(root, relpath.replace("/", os.sep)))
+    if base == "staged":
+        # The staged copy already carries production's line endings.
+        crlf = read(os.path.join(PROD, relpath.replace("/", os.sep)))[1]
     if text.count(old) != 1:
-        sys.exit("ANCHOR not found exactly once in %s (%d matches)"
-                 % (relpath, text.count(old)))
+        sys.exit("ANCHOR not found exactly once in %s [%s] (%d matches)"
+                 % (relpath, base, text.count(old)))
     write(relpath, text.replace(old, new, 1), crlf)
 
 
@@ -159,6 +170,14 @@ copy_dev("files/dummy_gui.py")
 #     PDFs it just produced. Verified to import nothing production lacks.
 copy_dev("files/Component_selector.py")
 
+# 2c-ter. color_strip.py -- NEW file, imported by BOTH dummy_gui.py and
+#     Component_selector.py above. Draws each colour strip (waveform bar, Bath
+#     Water Graph, Log FFT Waterfall) as one LineCollection instead of ~50,000
+#     single-segment plot() calls per component page: page 15.6 s -> 1.9 s and
+#     capture 3.2 s -> 0.3 s in a local profile, pixel-identical output. Must
+#     ship with them or both fail to import.
+copy_dev("files/color_strip.py")
+
 # 2d. save_gui_screenshot(): ImageGrab copies raw SCREEN pixels, so anything
 #     covering the component window lands in the PDF instead. Force the window
 #     topmost/raised/focused and let the compositor settle before grabbing.
@@ -169,6 +188,18 @@ SHOT_OLD = """def save_gui_screenshot(window):
     window.update_idletasks()
 """
 SHOT_NEW = """def save_gui_screenshot(window):
+    # OFFSCREEN PAGES: process/offscreen_tk.py composites the page itself, so
+    # there is nothing on screen to grab -- and nothing that can be covered,
+    # blanked by a lock screen, or lost when an RDP client disconnects. Without
+    # this branch the offscreen flag has no effect HERE and every component page
+    # is a photograph of the desktop, which is what the dev server produced on
+    # 2026-09-29 while its brain pages (which never call this) were perfect.
+    render = getattr(window, "render_offscreen", None)
+    if render is not None:
+        return render()
+
+    print("[offscreen] OFF - grabbing the desktop for this component page")
+
     # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
     # is visually on top of that region is what gets saved. Force THIS window to
     # the very top (topmost + raised + focused) and let the window manager
@@ -191,6 +222,131 @@ SHOT_NEW = """def save_gui_screenshot(window):
 """
 patch("files/create_report_pdf.py", SHOT_OLD, SHOT_NEW)
 
+# 2g. Restore the COLOUR CODING on the page-3 FFT peak-frequency labels. Each
+#     channel's spectrum is drawn in the next colour of the cycle, and the
+#     Alpha1 / Alpha / Alpha2 numbers printed for that channel are meant to
+#     carry the same colour, so a reader can tie a number to its trace. The
+#     production baseline passes no `color=`, so every number renders black and
+#     the association is lost.
+#
+#     Two hunks. First capture the Line2D returned by ax.plot and read its
+#     colour. Then replace the whole legend block with the dev version, which
+#     also moves the labels and the three alpha-peak rails into AXES-RELATIVE
+#     coordinates (0..1). In the production code their y positions are data
+#     coordinates (y_min + 900 + 30*j), so on a loud spectrum the block drifts
+#     up out of the panel and on a quiet one it collides with the traces. In
+#     axes coordinates they sit in the same visual place whatever the
+#     amplitude. The peak tick marks use a blended transform -- data x, so a
+#     tick still lines up with its frequency, axes y, so it stays at a fixed
+#     height. Font drops 17 -> 14 to match the dev layout the block was tuned
+#     for.
+#
+#     The block is extracted verbatim from both trees rather than retyped, so
+#     it cannot drift from what dev actually renders.
+COLOR_OLD = """        ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)"""
+COLOR_NEW = """        # Keep the Line2D so the peak-frequency numbers below can be printed in
+        # the same colour as this channel's spectrum -- that colour is the only
+        # thing tying a number to its trace.
+        line, = ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        line_color = line.get_color()"""
+patch("files/create_report_pdf.py", COLOR_OLD, COLOR_NEW, base="staged")
+
+LEGEND_OLD = """        
+        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500
+
+        tstring = "Alpha1:"
+        ax.text(start-10, y_min + 930, tstring)  
+        tstring = "Alpha:"
+        ax.text(start-10, y_min + 950, tstring)
+        tstring = "Alpha2:"
+        ax.text(start-10, y_min + 970, tstring)
+
+        if peak_index != 0:
+            value=(7*10+peak_index)/10
+            tstringv = f"{value:.1f}"
+            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)
+            ax.plot([start+7*40+4*peak_index, start+7*40+4*peak_index], [y_min+950, y_min+965], color = "Black", linewidth=1.0)
+        else:
+            value = 0
+        #print('Val: ', value)
+        if peak_indexl != 0:
+            valuel=(7*10+peak_indexl)/10
+            tstringl = f"{valuel:.1f}"
+            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)
+            ax.plot([start+7*40+4*peak_indexl, start+7*40+4*peak_indexl], [y_min+930, y_min+945], color = "Black", linewidth=1.0)
+        else:
+            valuel = 0
+        #print('low Peak: ', valuel)
+        if peak_indexh != 0:
+            valueh=(10*10+peak_indexh)/10
+            tstringh = f"{valueh:.1f}"
+            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)
+            ax.plot([start+10*40+4*peak_indexh, start+10*40+4*peak_indexh], [y_min+970, y_min+985], color = "Black", linewidth=1.0)
+        else:
+            valueh = 0
+"""
+LEGEND_NEW = """
+        # Position the per-channel peak-frequency legend in AXES-relative
+        # coordinates (0..1) so the layout is independent of the FFT
+        # amplitude — labels always render at the same visual location
+        # regardless of how loud the spectrum is. The numbers below were
+        # chosen to reproduce the production reference layout (compact
+        # upper-right block, ~14pt-equivalent text).
+        label_top = 0.94
+        label_bottom = 0.55
+        label_spacing = (label_top - label_bottom) / max(n - 1, 1)
+        label_y = label_top - label_spacing * j
+        label_fontsize = 14
+
+        ax.text(0.60, label_y, tstring1, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+
+        # "Alpha1:/Alpha:/Alpha2:" column labels for the three peak-marker
+        # rails. Use axes-relative coords so they sit at a fixed visible
+        # position regardless of FFT amplitude. Drawn inside the j-loop
+        # (redundantly), each iteration overlays the same text at the same
+        # spot — wasteful but harmless.
+        marker_y_low  = 0.85   # Alpha1 (low-alpha peak) rail center
+        marker_y_mid  = 0.90   # Alpha   (mid-alpha peak) rail center
+        marker_y_high = 0.95   # Alpha2  (high-alpha peak) rail center
+        marker_half_h = 0.018  # half-height of each tick mark in axes-y
+        marker_label_fontsize = 12
+        # blended transform: data-X (so ticks line up with spectrum freq),
+        # axes-Y (so they stay at a fixed visible height).
+        marker_trans = ax.get_xaxis_transform()
+
+        ax.text(0.01, marker_y_low,  "Alpha1:", fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_mid,  "Alpha:",  fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_high, "Alpha2:", fontsize=marker_label_fontsize, transform=ax.transAxes)
+
+        if peak_index != 0:
+            value=(7*10+peak_index)/10
+            tstringv = f"{value:.1f}"
+            ax.text(0.80, label_y, tstringv, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peak = start+7*40+4*peak_index
+            ax.plot([x_peak, x_peak], [marker_y_mid - marker_half_h, marker_y_mid + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            value = 0
+        #print('Val: ', value)
+        if peak_indexl != 0:
+            valuel=(7*10+peak_indexl)/10
+            tstringl = f"{valuel:.1f}"
+            ax.text(0.72, label_y, tstringl, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakl = start+7*40+4*peak_indexl
+            ax.plot([x_peakl, x_peakl], [marker_y_low - marker_half_h, marker_y_low + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            valuel = 0
+        #print('low Peak: ', valuel)
+        if peak_indexh != 0:
+            valueh=(10*10+peak_indexh)/10
+            tstringh = f"{valueh:.1f}"
+            ax.text(0.88, label_y, tstringh, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakh = start+10*40+4*peak_indexh
+            ax.plot([x_peakh, x_peakh], [marker_y_high - marker_half_h, marker_y_high + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
+        else:
+            valueh = 0
+"""
+patch("files/create_report_pdf.py", LEGEND_OLD, LEGEND_NEW, base="staged")
+
 # 2e. Serialize the watchdog. Today it fires subprocess.Popen per upload with
 #     no limit. Panel-only, concurrent studies merely compete for CPU; with
 #     cascades on, two at once means two fullscreen Tk windows fighting over
@@ -210,6 +366,14 @@ copy_dev("run_cascade.py")
 #     UNSET (or 0) on the servers so the brain pages come back.
 #     Imports only numpy/scipy/matplotlib, which the pipeline already needs.
 copy_dev("process/brain_render.py")
+
+# 2h. Offscreen page compositor. Ships INERT: nothing uses it unless
+#     CLEANEEG_OFFSCREEN=1 is set, in which case dummy_gui binds its widget
+#     names to it and the component page is composited with Agg + PIL instead
+#     of being built as a Tk window and photographed off the desktop. That is
+#     what lets a cascade survive a sleeping workstation, a dropped RDP client
+#     or a locked screen -- none of which the screen-grab path tolerates.
+copy_dev("process/offscreen_tk.py")
 
 # 2h. Cascade labels are de-identified: Montage_6.py (staged above) masks likely
 #     names in the study file name with '#' before printing it on the overview

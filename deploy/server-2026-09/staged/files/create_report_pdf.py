@@ -669,7 +669,11 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         phases = phases*100
         avg_amp_sc = sum(epoch_vals) / len(epoch_vals)
 
-        ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        # Keep the Line2D so the peak-frequency numbers below can be printed in
+        # the same colour as this channel's spectrum -- that colour is the only
+        # thing tying a number to its trace.
+        line, = ax.plot(start+40*freq_s[:len(freq_s)//4], y_min+100+avg_amp_sc[:len(avg_amp_sc)//4]/5, linewidth=0.5)
+        line_color = line.get_color()
 
 #  FIND THE PEAKS
 
@@ -703,37 +707,63 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
         beta_nums.append(np.sqrt(val)/2)
 
         upper_lim = ax.get_ylim()[1]
-        
-        ax.text(start+1750, y_min + 900 - 30 * j, tstring1, fontsize=17)   #-1000, + 500
 
-        tstring = "Alpha1:"
-        ax.text(start-10, y_min + 930, tstring)  
-        tstring = "Alpha:"
-        ax.text(start-10, y_min + 950, tstring)
-        tstring = "Alpha2:"
-        ax.text(start-10, y_min + 970, tstring)
+        # Position the per-channel peak-frequency legend in AXES-relative
+        # coordinates (0..1) so the layout is independent of the FFT
+        # amplitude — labels always render at the same visual location
+        # regardless of how loud the spectrum is. The numbers below were
+        # chosen to reproduce the production reference layout (compact
+        # upper-right block, ~14pt-equivalent text).
+        label_top = 0.94
+        label_bottom = 0.55
+        label_spacing = (label_top - label_bottom) / max(n - 1, 1)
+        label_y = label_top - label_spacing * j
+        label_fontsize = 14
+
+        ax.text(0.60, label_y, tstring1, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+
+        # "Alpha1:/Alpha:/Alpha2:" column labels for the three peak-marker
+        # rails. Use axes-relative coords so they sit at a fixed visible
+        # position regardless of FFT amplitude. Drawn inside the j-loop
+        # (redundantly), each iteration overlays the same text at the same
+        # spot — wasteful but harmless.
+        marker_y_low  = 0.85   # Alpha1 (low-alpha peak) rail center
+        marker_y_mid  = 0.90   # Alpha   (mid-alpha peak) rail center
+        marker_y_high = 0.95   # Alpha2  (high-alpha peak) rail center
+        marker_half_h = 0.018  # half-height of each tick mark in axes-y
+        marker_label_fontsize = 12
+        # blended transform: data-X (so ticks line up with spectrum freq),
+        # axes-Y (so they stay at a fixed visible height).
+        marker_trans = ax.get_xaxis_transform()
+
+        ax.text(0.01, marker_y_low,  "Alpha1:", fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_mid,  "Alpha:",  fontsize=marker_label_fontsize, transform=ax.transAxes)
+        ax.text(0.01, marker_y_high, "Alpha2:", fontsize=marker_label_fontsize, transform=ax.transAxes)
 
         if peak_index != 0:
             value=(7*10+peak_index)/10
             tstringv = f"{value:.1f}"
-            ax.text(start+2150, y_min + 900 - 30 * j, tstringv, fontsize=17)
-            ax.plot([start+7*40+4*peak_index, start+7*40+4*peak_index], [y_min+950, y_min+965], color = "Black", linewidth=1.0)
+            ax.text(0.80, label_y, tstringv, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peak = start+7*40+4*peak_index
+            ax.plot([x_peak, x_peak], [marker_y_mid - marker_half_h, marker_y_mid + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
         else:
             value = 0
         #print('Val: ', value)
         if peak_indexl != 0:
             valuel=(7*10+peak_indexl)/10
             tstringl = f"{valuel:.1f}"
-            ax.text(start+1950, y_min + 900 - 30 * j, tstringl, fontsize=17)
-            ax.plot([start+7*40+4*peak_indexl, start+7*40+4*peak_indexl], [y_min+930, y_min+945], color = "Black", linewidth=1.0)
+            ax.text(0.72, label_y, tstringl, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakl = start+7*40+4*peak_indexl
+            ax.plot([x_peakl, x_peakl], [marker_y_low - marker_half_h, marker_y_low + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
         else:
             valuel = 0
         #print('low Peak: ', valuel)
         if peak_indexh != 0:
             valueh=(10*10+peak_indexh)/10
             tstringh = f"{valueh:.1f}"
-            ax.text(start+2350, y_min + 900 - 30 * j, tstringh, fontsize=17)
-            ax.plot([start+10*40+4*peak_indexh, start+10*40+4*peak_indexh], [y_min+970, y_min+985], color = "Black", linewidth=1.0)
+            ax.text(0.88, label_y, tstringh, fontsize=label_fontsize, color=line_color, transform=ax.transAxes)
+            x_peakh = start+10*40+4*peak_indexh
+            ax.plot([x_peakh, x_peakh], [marker_y_high - marker_half_h, marker_y_high + marker_half_h], color="Black", linewidth=1.5, transform=marker_trans)
         else:
             valueh = 0
         #print('hi peak: ', valueh)
@@ -1027,6 +1057,18 @@ def create_metric_strings():
         "Split Half Reliability"]
 
 def save_gui_screenshot(window):
+    # OFFSCREEN PAGES: process/offscreen_tk.py composites the page itself, so
+    # there is nothing on screen to grab -- and nothing that can be covered,
+    # blanked by a lock screen, or lost when an RDP client disconnects. Without
+    # this branch the offscreen flag has no effect HERE and every component page
+    # is a photograph of the desktop, which is what the dev server produced on
+    # 2026-09-29 while its brain pages (which never call this) were perfect.
+    render = getattr(window, "render_offscreen", None)
+    if render is not None:
+        return render()
+
+    print("[offscreen] OFF - grabbing the desktop for this component page")
+
     # ImageGrab captures raw SCREEN pixels for the window's region, so whatever
     # is visually on top of that region is what gets saved. Force THIS window to
     # the very top (topmost + raised + focused) and let the window manager

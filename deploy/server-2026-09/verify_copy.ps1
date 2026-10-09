@@ -1,7 +1,7 @@
 # verify_copy.ps1 -- confirm the staged files landed intact on a server.
 #
-# Run from the deploy folder AFTER copying staged\ (and optionally
-# staged-optional\) into the project directory:
+# Run from the deploy folder AFTER copying staged\ and staged-optional\ into
+# the project directory:
 #
 #     .\verify_copy.ps1 -ProjectRoot "C:\path\to\CleanEEGProject"
 #
@@ -19,7 +19,8 @@ param(
 
     [string]$SumsFile,
 
-    # Skip rows under staged-optional\ (the numpy>=2 insurance file).
+    # Skip rows under staged-optional\ (process\detect_artifact.py). It now ships
+    # to every server; use this only if you deliberately left it out.
     [switch]$SkipOptional
 )
 

@@ -653,8 +653,8 @@ def detect_pdr_freq_epoch(sigs, channel_labels):
         half_peaks.append(half_peak)
         tolerance = 80
         indexes = [i for i, value in enumerate(amp_sc[:650]) if abs(value-half_peak) <= tolerance]
-        print('Indexes: ', indexes)
-        print(retcon)
+        #print('Indexes: ', indexes)
+        #print(retcon)
         peak = retcon/10
         closest_left = None
         closest_right = None
@@ -727,8 +727,8 @@ def detect_pdr_freq_width(sigs, channel_labels, numpages):
         half_peaks.append(half_peak)
         tolerance = 80
         indexes = [i for i, value in enumerate(avg_amp_sc[:650]) if abs(value-half_peak) <= tolerance]
-        print('Indexes: ', indexes)
-        print(retcon)
+        #print('Indexes: ', indexes)
+        #print(retcon)
         peak = retcon/10
         closest_left = None
         closest_right = None
@@ -753,7 +753,7 @@ def detect_pdr_freq_width(sigs, channel_labels, numpages):
         if closest_right is None:
             closest_right = 0
         half_width = (closest_right-closest_left)/10
-        print('Half Width: ', half_width)
+        #print('Half Width: ', half_width)
         widths.append(half_width)
 
     ind = half_peaks.index(max(half_peaks))
@@ -972,23 +972,23 @@ def detect_phen_fastalpha(art_flags1, art_flags2, art_flags3, channel_labels, re
             val = max(avg_amp_sc[70:100])
             alpha_nums.append(np.sqrt(val)/2)
         except:
-            print('NO VAL')
+            pass  # print('NO VAL')
         try:
             alpha_vals.append(float(tstringh))
             val = max(avg_amp_sc[100:140])
             alpha_nums.append(np.sqrt(val)/2)
         except:
-            print('NO VAL')
+            pass  # print('NO VAL')
     
         
-    print('Alphavals--------------------------------', alpha_vals)
-    print('AlphaNums--------------------------------', alpha_nums)
+    #print('Alphavals--------------------------------', alpha_vals)
+    #print('AlphaNums--------------------------------', alpha_nums)
     
     if len(alpha_vals) != 0:
         alpha_speed = alpha_vals[alpha_nums.index(max(alpha_nums))]
     else:
         alpha_speed = 0
-    print('Alpha Speed -------------: ', alpha_speed)
+    #print('Alpha Speed -------------: ', alpha_speed)
     
     return score, alpha_speed, report_strings
 

@@ -5,6 +5,7 @@ import tkinter.ttk as ttk
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
+from files.color_strip import add_color_strip
 from matplotlib.cm import ScalarMappable
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -406,7 +407,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
 
     
     #GET TMATRIX FILE----------------------------------------------------------------------------------------------------------------------------------------------------------
-    print('IN SOURCE LOCALIZATION FUNCTION')
+    #print('IN SOURCE LOCALIZATION FUNCTION')
     cwd = os.getcwd()
     file_path = os.path.join(cwd, '19chan.sLoreta.none.csv')
     #REORDER ICA MIXING TO DISCOVERY ORDER-------------------------------------------------------------------------------------------------------------------------------------
@@ -415,7 +416,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         string_index_map = {string: index for index, string in enumerate(channel_labels_short)}
     #print('ICA Before Sorting: ', icamixing)
         channel_labels_disc_sorted = sorted(channel_labels_short, key=lambda x: disc_order.index(x))
-        print('CHANNEL LABELS', channel_labels_disc_sorted) 
+        #print('CHANNEL LABELS', channel_labels_disc_sorted) 
         reordered_ica_mixing = []
     
         for string in channel_labels_disc_sorted:
@@ -437,15 +438,15 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         matrix_data = [row[2:21] for row in reader]
 
     matrix = np.array(matrix_data, dtype=float)
-    print('MATRIX SHAPE: ', matrix.shape)
+    #print('MATRIX SHAPE: ', matrix.shape)
     #print(matrix)
     vector = ordered_ica_mixing[:, idx-1]
     vector = vector[:19]
     mult_result = vector_matrix_multiplication(matrix, vector)
-    print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
+    #print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
     #print(mult_result)
     reshaped_list = np.reshape(mult_result, (6239, 3))
-    print("RESHAPED LIST: ", reshaped_list)
+    #print("RESHAPED LIST: ", reshaped_list)
     #CREATE CSD BASED OFF DOT PRODUCT RESULT---------------------------------------------------------------------------------------------------------------------------------------
     voxel_csd = []
     for i in range(0, len(mult_result), 3):
@@ -453,19 +454,19 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         sum_of_squares = sum(k**2 for k in xyz)
         new_val = math.sqrt(sum_of_squares)
         voxel_csd.append(new_val)
-    print('CSD SHAPE: ', len(voxel_csd))
+    #print('CSD SHAPE: ', len(voxel_csd))
     #FIND THE MAX----------------------------------------------------------------------------------------------------------------------------------------------------------------
     max_value = max(voxel_csd)
     max_index = voxel_csd.index(max_value)
-    print("Maximum value:", max_value)
-    print("Index of maximum value:", max_index)
+    #print("Maximum value:", max_value)
+    #print("Index of maximum value:", max_index)
     #GET LOCATION OF SOURCE VOXEL-----------------------------------------------------------------------------------------------------------------------------------------------
     location_file_path = os.path.join('MNI-BAs-6239-voxels.csv')
     with open(location_file_path, 'r') as file:
         location_data = csv.reader(file)
         location_matrix = np.array(list(location_data), dtype=str)
     #print(location_matrix)
-    print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
+    #print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
    
     #ACQUIRE SOURCE POINT--------------------------------------------------------------------------------------------------------------------------------------------------------
     source_point = location_matrix[max_index, :]
@@ -569,8 +570,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
     print('Ybound: ', y_bound)
     time_range = np.arange(0, numsamples, 10)
     sigtoshow = myvisualsigs[(idx-1), time_range]
-    for j in range(len(time_range) - 1):
-                ax_wave.plot(time_range[j:j+2], [y_bound[0], y_bound[0]], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= 7)
+    add_color_strip(ax_wave, time_range, y_bound[0], plt.cm.jet((20+sigtoshow)/40), 7)
     canvas_wave = FigureCanvasTkAgg(fig_wave, master=CV)
     canvas_wave.draw()
     canvas_wave.get_tk_widget().place(x=1061, y=0)
@@ -599,8 +599,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         yvalues[0:4] = y_position
         data_range = np.arange(2560*(i), 2560*(i+1), 10)
         sigtoshow = signalsin[(idx-1), data_range]
-        for j in range(len(time_range) - 1):
-            ax_ribbon.plot(time_range[j:j+2], yvalues[0:2], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_ribbon, time_range, y_position, plt.cm.jet((20+sigtoshow)/40), (146/numpages)-.6)
     #()
     canvas = FigureCanvasTkAgg(fig_ribbon, master=CV)
     canvas.get_tk_widget().place(x=1043, y=218)
@@ -743,7 +742,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         epoch_vals.append(amp_sc)
         phases.append(phase)
         power_s = np.abs(power_s)
-        print('Length is: ', len(power_s))
+        #print('Length is: ', len(power_s))
         powers.append(power_s)
         #FFT OF POWER SPECTRUM
         #cyc_fft = np.fft.fft(amp_sc)
@@ -756,7 +755,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
     avg_amp_sc = sum(epoch_vals) / len(epoch_vals)
     avg_unsmooth = sum(ffts) / len(ffts)
     avg_power = sum(powers) / len(powers)
-    print(avg_power[1920:])
+    #print(avg_power[1920:])
     #i_fft = np.fft.ifft(avg_amp_sc)
     #print('length: ', len(i_fft))
     #i_fft = np.real(i_fft)
@@ -844,8 +843,7 @@ def ComponentViewer(root, update_gui, length, numsamples, ica_mixing, idx, selec
         sigs = epoch[data_range]
         #print('EPOCH: ', sigs)
         #print('Length: ', len(epoch))
-        for j in range(len(time_range)-1):
-            ax_waterfall.plot(time_range[j:j+2], yvalues[0:2], color=cmap(norm(np.log(sigs[j]))), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_waterfall, time_range, y_position, cmap(norm(np.log(sigs))), (146/numpages)-.6)
     canvas = FigureCanvasTkAgg(fig_waterfall, master=CV)
     canvas.get_tk_widget().place(x=1043, y=472)
     ax_waterfall.set_title('Log FFT Waterfall', pad=1)

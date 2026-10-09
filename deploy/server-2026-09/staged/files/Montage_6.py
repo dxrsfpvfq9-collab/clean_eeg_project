@@ -9,6 +9,40 @@ from matplotlib.figure import Figure
 import matplotlib.widgets
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+#  FOREGROUND-WINDOW GUARD -------------------------------------------------
+#  matplotlib's Tk backend wraps figure-manager creation in
+#  _restore_foreground_window_at_end(), which starts by calling
+#  Win32_GetForegroundWindow(). On Windows that returns NULL whenever the
+#  session has no foreground window -- a minimized or disconnected RDP client,
+#  a locked desktop, a window mid-activation -- and the C wrapper turns NULL
+#  into "ValueError: PyCapsule_New called with null pointer". It killed a
+#  17-minute cascade on the dev server (2026-09-24) after the render had
+#  already done its work.
+#
+#  Restoring focus is cosmetic for an unattended render, and every figure we
+#  build here is captured by ImageGrab rather than looked at, so replace the
+#  context manager with a no-op. Patched on the module object, because
+#  _backend_tk looks the name up as a module global at call time. Wrapped in
+#  try/except so a matplotlib version without it changes nothing.
+def _disable_tk_foreground_restore():
+    try:
+        from matplotlib.backends import _backend_tk
+    except Exception:
+        return
+    if not hasattr(_backend_tk, "_restore_foreground_window_at_end"):
+        return
+    import contextlib
+
+    @contextlib.contextmanager
+    def _no_foreground_restore():
+        yield
+
+    _backend_tk._restore_foreground_window_at_end = _no_foreground_restore
+
+
+_disable_tk_foreground_restore()
+#  -------------------------------------------------------------------------
 import numpy as np
 from scipy.signal import find_peaks
 from files.create_report_pdf import save_gui_screenshot
@@ -356,6 +390,15 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             regions_s        = [regions[i]        for i in order]
             areas_s          = [areas[i]          for i in order]
             fft_peaks_s      = [fft_peaks[i]      for i in order]
+            # Mark mains-interference components in the table. The servers run
+            # ICA without the pre-ICA line filter (it would change the
+            # decomposition and so every EC_191 z-score), so on line-contaminated
+            # recordings FastICA spends whole components on 60 Hz. Their
+            # "source" is the power line, so Lobe/Region/Area mean nothing for
+            # them. Display only: fft_peaks keeps the numbers.
+            LINE_LO, LINE_HI = 59.0, 61.0
+            n_line = sum(1 for p in fft_peaks_s if LINE_LO <= p <= LINE_HI)
+            fft_peaks_s = [f"{p} (line)" if LINE_LO <= p <= LINE_HI else p for p in fft_peaks_s]
             # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
             # or, with CLEANEEG_NO_BRAIN, [overview, comp_1, comp_2, ...].
             sorted_screenshots = [screenshots[0]]
@@ -420,7 +463,18 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                     for row_idx in range(num_rows):
                           for col_idx in range(num_columns):
                                 pdf.cell(column_widths[col_idx], 8, str(data_array[col_idx][row_idx]), border=1)
-                          pdf.ln()           
+                          pdf.ln()
+                    if n_line:
+                          # 20 rows already reach ~184 mm; FPDF's default break
+                          # at 190 mm would push this one line onto a page of
+                          # its own, so suspend auto-break while it is drawn.
+                          pdf.set_auto_page_break(False)
+                          pdf.ln(2)
+                          pdf.set_font("Arial", "I", 8)
+                          pdf.cell(0, 5, f"(line) = spectral peak at {LINE_LO:g}-{LINE_HI:g} Hz: power-line interference, "
+                                         "not a brain source. Lobe, Region and Area are not meaningful for these components.")
+                          pdf.set_font("Arial", size=10)
+                          pdf.set_auto_page_break(True, 20)
 
             #TABLE CREATION
               pdf.output(img_cascade_file)  

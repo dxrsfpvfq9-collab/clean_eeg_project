@@ -51,3 +51,6 @@ EO_AGE*.xlsx
 EC_TEST*.xlsx
 EC_SPEEDTEST*.xlsx
 _paper_text.txt
+
+# watchdog run logs (tomwatchdog_serialized.py writes logs\watchdog-YYYY-MM-DD.log)
+logs/

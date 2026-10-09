@@ -7,7 +7,35 @@ import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.cm import ScalarMappable
+import os
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+#  OFFSCREEN RENDERING -------------------------------------------------------
+#  With CLEANEEG_OFFSCREEN=1 the page is composited by process/offscreen_tk.py
+#  instead of being built as a Tk window and photographed off the desktop. That
+#  removes the dependency on a live, unlocked, composited session -- the thing
+#  that kills a cascade when the workstation sleeps or an RDP client drops.
+#
+#  Rebinding happens HERE, after the tkinter imports, because `from tkinter
+#  import *` followed by `from tkinter.ttk import *` has already bound bare
+#  Button/Label/Canvas/Listbox in this module's namespace; substituting the
+#  `tk` alias alone would miss them.
+if os.environ.get("CLEANEEG_OFFSCREEN", "") not in ("", "0"):
+    from process import offscreen_tk as _off
+    tk = _off
+    ttk = _off.ttk
+    font = _off.font
+    FigureCanvasTkAgg = _off.FigureCanvasTkAgg
+    Button = _off.Button
+    Label = _off.Label
+    Canvas = _off.Canvas
+    Listbox = _off.Listbox
+    Style = _off.Style
+    print("[offscreen] ON - component page composited with Agg, screen not read")
+else:
+    print("[offscreen] OFF - component page will be CAPTURED FROM THE DESKTOP; "
+          "set CLEANEEG_OFFSCREEN=1 to composite instead")
+#  ---------------------------------------------------------------------------
 from matplotlib.figure import Figure
 from scipy.interpolate import griddata
 import matplotlib.patches as patches
@@ -29,6 +57,7 @@ os.environ['ETS_TOOLKIT'] = 'wx'
 #from pyface.qt import QtGui, QtCore
 import pyvista as pv
 from process.detect_artifact import detect_peak
+from files.color_strip import add_color_strip
 
 #from Montage_List import icabutton_callback
 #from ttkthemes import ThemedTk
@@ -225,7 +254,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
 
     
     #GET TMATRIX FILE----------------------------------------------------------------------------------------------------------------------------------------------------------
-    print('IN SOURCE LOCALIZATION FUNCTION')
+    #print('IN SOURCE LOCALIZATION FUNCTION')
     cwd = os.getcwd()
     file_path = os.path.join(cwd, '19chan.sLoreta.none.csv')
     #REORDER ICA MIXING TO DISCOVERY ORDER-------------------------------------------------------------------------------------------------------------------------------------
@@ -234,7 +263,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         string_index_map = {string: index for index, string in enumerate(channel_labels_short)}
     #print('ICA Before Sorting: ', icamixing)
         channel_labels_disc_sorted = sorted(channel_labels_short, key=lambda x: disc_order.index(x))
-        print('CHANNEL LABELS', channel_labels_disc_sorted) 
+        #print('CHANNEL LABELS', channel_labels_disc_sorted) 
         reordered_ica_mixing = []
     
         for string in channel_labels_disc_sorted:
@@ -246,21 +275,21 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     #GET INDIVIDUAL COMPONENT OUT OF ICA MIXNG----------------------------------------------------------------------------------------------------------------------------------
     vector = ordered_ica_mixing[:, idx-1]
     vector = vector[:19]
-    print('VECTOR TO BE MULTIPLIED: ', vector)
-    print('VECTOR SHAPE: ', vector.shape)
+    #print('VECTOR TO BE MULTIPLIED: ', vector)
+    #print('VECTOR SHAPE: ', vector.shape)
     #GET MATRIX OUT OF CSV FILE------------------------------------------------------------------------------------------------------------------------------------------------
     with open(file_path) as file:
         reader = csv.reader(file)
         matrix_data = [row[2:21] for row in reader]
 
     matrix = np.array(matrix_data, dtype=float)
-    print('MATRIX SHAPE: ', matrix.shape)
+    #print('MATRIX SHAPE: ', matrix.shape)
     #print(matrix)
     mult_result = vector_matrix_multiplication(matrix, vector)
-    print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
+    #print('DOT PRODUCT RESULT SHAPE: ', mult_result.shape)
     #print(mult_result)
     reshaped_list = np.reshape(mult_result, (6239, 3))
-    print("RESHAPED LIST: ", reshaped_list)
+    #print("RESHAPED LIST: ", reshaped_list)
     #CREATE CSD BASED OFF DOT PRODUCT RESULT---------------------------------------------------------------------------------------------------------------------------------------
     voxel_csd = []
     for i in range(0, len(mult_result), 3):
@@ -268,19 +297,19 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         sum_of_squares = sum(k**2 for k in xyz)
         new_val = math.sqrt(sum_of_squares)
         voxel_csd.append(new_val)
-    print('CSD SHAPE: ', len(voxel_csd))
+    #print('CSD SHAPE: ', len(voxel_csd))
     #FIND THE MAX----------------------------------------------------------------------------------------------------------------------------------------------------------------
     max_value = max(voxel_csd)
     max_index = voxel_csd.index(max_value)
-    print("Maximum value:", max_value)
-    print("Index of maximum value:", max_index)
+    #print("Maximum value:", max_value)
+    #print("Index of maximum value:", max_index)
     #GET LOCATION OF SOURCE VOXEL-----------------------------------------------------------------------------------------------------------------------------------------------
     location_file_path = os.path.join('MNI-BAs-6239-voxels.csv')
     with open(location_file_path, 'r') as file:
         location_data = csv.reader(file)
         location_matrix = np.array(list(location_data), dtype=str)
     #print(location_matrix)
-    print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
+    #print('LOCATION MATRIX SHAPE: ',location_matrix.shape)
    
     #ACQUIRE SOURCE POINT--------------------------------------------------------------------------------------------------------------------------------------------------------
     source_point = location_matrix[max_index, :]
@@ -345,8 +374,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     print('Ybound: ', y_bound)
     time_range = np.arange(0, numsamples, 10)
     sigtoshow = myvisualsigs[(idx-1), time_range]
-    for j in range(len(time_range) - 1):
-                ax_wave.plot(time_range[j:j+2], [y_bound[0], y_bound[0]], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= 7)
+    add_color_strip(ax_wave, time_range, y_bound[0], plt.cm.jet((20+sigtoshow)/40), 7)
     canvas_wave = FigureCanvasTkAgg(fig_wave, master=CV)
     canvas_wave.draw()
     canvas_wave.get_tk_widget().place(x=1061, y=0)
@@ -373,8 +401,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         yvalues[0:4] = y_position
         data_range = np.arange(2560*(i), 2560*(i+1), 10)
         sigtoshow = signalsin[(idx-1), data_range]
-        for j in range(len(time_range) - 1):
-            ax_ribbon.plot(time_range[j:j+2], yvalues[0:2], color=plt.cm.jet((20+sigtoshow[j])/40), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_ribbon, time_range, y_position, plt.cm.jet((20+sigtoshow)/40), (146/numpages)-.6)
     #()
     canvas = FigureCanvasTkAgg(fig_ribbon, master=CV)
     canvas.get_tk_widget().place(x=1043, y=218)
@@ -525,7 +552,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         epoch_vals.append(amp_sc)
         phases.append(phase)
         power_s = np.abs(power_s)
-        print('Length is: ', len(power_s))
+        #print('Length is: ', len(power_s))
         powers.append(power_s)
         #FFT OF POWER SPECTRUM
         #cyc_fft = np.fft.fft(amp_sc)
@@ -538,7 +565,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
     avg_amp_sc = sum(epoch_vals) / len(epoch_vals)
     avg_unsmooth = sum(ffts) / len(ffts)
     avg_power = sum(powers) / len(powers)
-    print(avg_power[1920:])
+    #print(avg_power[1920:])
     #i_fft = np.fft.ifft(avg_amp_sc)
     #print('length: ', len(i_fft))
     #i_fft = np.real(i_fft)
@@ -624,8 +651,7 @@ def dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list
         sigs = epoch[data_range]
         #print('EPOCH: ', sigs)
         #print('Length: ', len(epoch))
-        for j in range(len(time_range)-1):
-            ax_waterfall.plot(time_range[j:j+2], yvalues[0:2], color=cmap(norm(np.log(sigs[j]))), linewidth= (146/numpages)-.6)
+        add_color_strip(ax_waterfall, time_range, y_position, cmap(norm(np.log(sigs))), (146/numpages)-.6)
     canvas = FigureCanvasTkAgg(fig_waterfall, master=CV)
     canvas.get_tk_widget().place(x=1043, y=472)
     ax_waterfall.set_title('Log FFT Waterfall', pad=1)
