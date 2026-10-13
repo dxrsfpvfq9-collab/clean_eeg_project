@@ -24,11 +24,11 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `files\create_report_pdf.py` | project `files\` | 60110 |
 | `files\dummy_gui.py` | project `files\` | 56814 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
-| `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
+| `files\edftotextbynameplotproc.py` | project `files\` | 59890 |
 | `process\brain_render.py` | project `process\` | 21032 |
 | `process\offscreen_tk.py` | project `process\` | 15246 |
 | `mne_data\` (whole folder, 6 surface files) | project folder — merge | ~25 MB |
-| `run_cascade.py` | project folder | 2661 |
+| `run_cascade.py` | project folder | 2995 |
 | `tomwatchdog_serialized.py` | project folder | 19338 |
 | `staged-optional\process\detect_artifact.py` | project `process\` | 60659 |
 

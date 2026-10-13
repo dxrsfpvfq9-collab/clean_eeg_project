@@ -92,9 +92,17 @@ no render).
 
 **Verification hazard:** because the filter is gated on `selstring[12]`, a
 dev cascade run and a dev panel-only run of the same EDF disagree on ~40
-of 48 metrics. The filter is NOT shipped to the servers, so there cascade
-and panel agree. When comparing dev output against production, always
+of 48 metrics. When comparing dev output against production, always
 compare panel-mode against panel-mode.
+
+**On the servers: cascade pass only (staged 2026-10-13, not yet deployed).**
+The two-pass flow makes this safe. `module7.py` (panel) ships with
+`selstring[12]=0` and stays unfiltered; only `run_cascade.py` sets it, so
+only the cascade's ICA is filtered. The cost is that the cascade no longer
+shows the exact decomposition the panel's artifact rejection used.
+`CLEANEEG_PREICA=off` on the server restores the match. Never enable the
+cascade inside the panel pass: that filters the panel and moves ~39 of 48
+z-scores.
 
 **Two-pass server flow (panel first).** `module7.py` now ships to the servers
 with `selstring[12] = 0`, so it writes ONLY the brain panel — seconds, not
@@ -246,9 +254,9 @@ commented out in `files/Montage_6.py`, so IMG mode raised
 
 **Line-noise marking (display only).** The summary table's FFT Peak reads
 e.g. `60.0 (line)` for any component peaking at 59–61 Hz, with a footnote
-that it is mains interference and its Lobe/Region/Area mean nothing. This
-is the server-side answer to 60 Hz components, because the pre-ICA filter
-cannot ship (it would desync the cascade's ICA from the panel's). Auto
+that it is mains interference and its Lobe/Region/Area mean nothing. Once
+the cascade-pass pre-ICA filter is live this should rarely fire, but it
+stays as the fallback (and for `CLEANEEG_PREICA=off` runs). Auto
 page-break is suspended for the footnote: 20 rows already end near FPDF's
 190 mm break.
 

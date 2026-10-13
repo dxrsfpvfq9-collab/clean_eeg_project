@@ -15,9 +15,14 @@
 #      already on disk before this starts.
 #
 # The cost is one extra ICA + metrics pass, well under a minute against the
-# cascade's own runtime. FastICA is seeded (random_state=0), so this pass
-# reproduces the decomposition the panel was built from -- the cascade still
-# explains that panel.
+# cascade's own runtime.
+#
+# selstring[12] = 1 also turns on the pre-ICA 60 Hz line filter (lp50 notch60)
+# in edftotextbynameplotproc.py, so FastICA does not spend components on mains
+# interference. The panel pass never sets selstring[12] and stays unfiltered.
+# The cost: this cascade shows the FILTERED decomposition, not the exact one the
+# panel's artifact rejection used, so component numbers do not map 1:1 onto the
+# panel. CLEANEEG_PREICA=off restores the matching (unfiltered) decomposition.
 #
 # selstring[8] stays 0 here so the report is NOT written a second time.
 # Honours CLEANEEG_NO_BRAIN=1 (skip the 3D source-localization pages).

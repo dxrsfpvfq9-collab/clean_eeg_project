@@ -375,6 +375,40 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
            int(x) for x in _sk.__version__.split(".")[:2]) >= (1, 3) else True
        ica = FastICA(n_components=n, max_iter = 1000, random_state=0, whiten=_whiten_mode)
 #       ica = ICA(n_components=n, method = method, max_iter = 5000)
+
+#  ---- Pre-ICA anti-line filter (IMAGE CASCADE pass only) ---------------------
+#  Strong 60 Hz survives the 1.5-45 Hz visual bandpass (~-10 dB at 60 Hz) and
+#  FastICA spends components on it (up to ~34% of variance in 3-8 spurious
+#  "60 Hz brain" sources). Applied only when selstring[12]==1, i.e. the
+#  run_cascade.py pass; the panel pass (module7, selstring[12]=0) stays
+#  UNFILTERED so the report and its EC_191 z-scores are unaffected.
+#  CLEANEEG_PREICA overrides: "off" disables; tokens lp40/lp45/lp50 (zero-phase
+#  4-pole Butterworth low-pass) and notch60 (60 Hz IIR notch, Q=30) combine.
+       _preica = os.environ.get("CLEANEEG_PREICA")
+       if _preica is None:
+           _is_cascade = len(selstring) > 12 and selstring[12] == 1
+           _preica = "lp50 notch60" if _is_cascade else ""
+       _preica = (_preica or "").lower()
+       if _preica and _preica not in ("off", "none", "0"):
+           from scipy.signal import butter as _butter, filtfilt as _filtfilt, iirnotch as _iirnotch
+           _fs = 256.0
+           def _lp(sig, hz, order=4):
+               _b, _a = _butter(order, hz, btype="low", fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           def _notch(sig, hz, q=30.0):
+               _b, _a = _iirnotch(hz, q, fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           for _i in range(n):
+               if "lp40" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 40.0)
+               if "lp45" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 45.0)
+               if "lp50" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 50.0)
+               if "notch60" in _preica:
+                   myvisualsigs[_i] = _notch(myvisualsigs[_i], 60.0)
+           print(f"[pre-ICA anti-line filter applied: '{_preica}']")
+
        myvisualsigst = myvisualsigs.T
        ica_components = ica.fit_transform(myvisualsigst)
 #FIT_TRANSFORM: FITS A MODEL TO THE DATA, TRANSFORMS DATA BASED ON LEARNED MODEL

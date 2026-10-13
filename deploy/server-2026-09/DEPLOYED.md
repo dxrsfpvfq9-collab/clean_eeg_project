@@ -94,6 +94,30 @@ header on all three pages.
   for cascades; if the cascade queue keeps growing, set `CASCADE_PASS = False`
   and render cascades on a workstation with `batch_imagecascade.py`.
 
+## Follow-up: pre-ICA 60 Hz filter for cascades — STAGED 2026-10-13, not deployed
+
+Two files to copy: `files\edftotextbynameplotproc.py` (59890 bytes) and
+`run_cascade.py` (2995 bytes, comment only). No restart flags change; restart the
+watchdog after copying.
+
+The cascade pass now low-passes (zero-phase 4-pole 50 Hz) and notches 60 Hz
+before FastICA. Line noise was taking up to ~34% of variance in 3–8 spurious
+components on contaminated studies. The filter is gated on `selstring[12]`,
+which only `run_cascade.py` sets, so **the panel is unaffected**. Under the old
+one-pass plan this filter would have moved 39 of 48 panel z-scores, which is why
+it was left out of the first port.
+
+Trade-off accepted: the cascade shows the filtered decomposition, not exactly
+the one the panel's artifact rejection used, so cascade component numbers no
+longer map 1:1 onto the panel. `CLEANEEG_PREICA=off` restores the matching
+decomposition.
+
+Checked on the staged code (production snapshot + `staged/`, `raw_130399`):
+panel pass rc 0 with no filter applied; cascade pass printed
+`[pre-ICA anti-line filter applied: 'lp50 notch60']`, `CASCADE OK`, and left
+the panel PDF untouched. The rebuild also now regenerates the panel name
+masking from the build script, where it had previously been hand-staged.
+
 ## Rollback
 
 Copy `files\backup-2026-09` back (`detect_artifact.py` to `process\`, the rest

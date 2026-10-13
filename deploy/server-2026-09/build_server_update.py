@@ -118,21 +118,79 @@ GSTD_NEW = '''\
 
 patch("files/edftotextbynameplotproc.py", GSTD_OLD, GSTD_NEW)
 
+# ---------------------------------------------------------------------------
+# CHANGE 1b -- pre-ICA 60 Hz line filter, CASCADE PASS ONLY
+# ---------------------------------------------------------------------------
+# Strong 60 Hz survives the 1.5-45 Hz visual bandpass (~-10 dB at 60 Hz) and
+# FastICA spends components on it: up to ~34% of variance in 3-8 fake "60 Hz
+# brain sources" on contaminated studies; 0% and unchanged on clean ones.
+#
+# Gated on selstring[12]. On the servers that is set ONLY by run_cascade.py
+# (module7.py ships with selstring[12] = 0), so the panel pass stays unfiltered
+# and the panel and EC_191 z-scores are untouched. This is why the filter was
+# held back from the first port: under the old ONE-pass plan the cascade flag
+# was on in the panel run too, and filtering moved 39 of 48 panel z-scores.
+#
+# Accepted cost: the cascade now shows the filtered decomposition, not the one
+# the panel's artifact rejection used. Component numbers/percentages in the
+# cascade are not a 1:1 map onto what the panel removed.
+#
+# CLEANEEG_PREICA overrides ("off" disables; tokens lp40/lp45/lp50/notch60).
+PREICA_OLD = '''#       ica = ICA(n_components=n, method = method, max_iter = 5000)
+       myvisualsigst = myvisualsigs.T
+       ica_components = ica.fit_transform(myvisualsigst)
+'''
+PREICA_NEW = '''#       ica = ICA(n_components=n, method = method, max_iter = 5000)
+
+#  ---- Pre-ICA anti-line filter (IMAGE CASCADE pass only) ---------------------
+#  Strong 60 Hz survives the 1.5-45 Hz visual bandpass (~-10 dB at 60 Hz) and
+#  FastICA spends components on it (up to ~34% of variance in 3-8 spurious
+#  "60 Hz brain" sources). Applied only when selstring[12]==1, i.e. the
+#  run_cascade.py pass; the panel pass (module7, selstring[12]=0) stays
+#  UNFILTERED so the report and its EC_191 z-scores are unaffected.
+#  CLEANEEG_PREICA overrides: "off" disables; tokens lp40/lp45/lp50 (zero-phase
+#  4-pole Butterworth low-pass) and notch60 (60 Hz IIR notch, Q=30) combine.
+       _preica = os.environ.get("CLEANEEG_PREICA")
+       if _preica is None:
+           _is_cascade = len(selstring) > 12 and selstring[12] == 1
+           _preica = "lp50 notch60" if _is_cascade else ""
+       _preica = (_preica or "").lower()
+       if _preica and _preica not in ("off", "none", "0"):
+           from scipy.signal import butter as _butter, filtfilt as _filtfilt, iirnotch as _iirnotch
+           _fs = 256.0
+           def _lp(sig, hz, order=4):
+               _b, _a = _butter(order, hz, btype="low", fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           def _notch(sig, hz, q=30.0):
+               _b, _a = _iirnotch(hz, q, fs=_fs)
+               return _filtfilt(_b, _a, sig)
+           for _i in range(n):
+               if "lp40" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 40.0)
+               if "lp45" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 45.0)
+               if "lp50" in _preica:
+                   myvisualsigs[_i] = _lp(myvisualsigs[_i], 50.0)
+               if "notch60" in _preica:
+                   myvisualsigs[_i] = _notch(myvisualsigs[_i], 60.0)
+           print(f"[pre-ICA anti-line filter applied: '{_preica}']")
+
+       myvisualsigst = myvisualsigs.T
+       ica_components = ica.fit_transform(myvisualsigst)
+'''
+patch("files/edftotextbynameplotproc.py", PREICA_OLD, PREICA_NEW, base="staged")
+
 
 # ---------------------------------------------------------------------------
 # CHANGE 2 -- image cascades alongside every brain panel
 # ---------------------------------------------------------------------------
 # 2a. Turn the cascade on in the unattended (watchdog) entry path.
 #
-# NOTE ON THE PRE-ICA LINE FILTER: the dev tree applies lp50+notch60 before ICA
-# whenever selstring[12]==1. That filter is deliberately NOT ported. It changes
-# the ICA decomposition, and montage 6 rebuilds the report signals FROM that
-# decomposition, so it moves the panel: measured on QA study A (EC), 39 of 48
-# z-scores shifted, several past 2 sigma (Beta Max Front +3.21, PDR Max Post.
-# +2.58, Front Alpha Asym -2.00). That would silently invalidate every
-# comparison against EC_191. Leaving it out keeps the panel numerically
-# identical to today's production AND makes the cascade show the same
-# decomposition the panel was computed from.
+# NOTE ON THE PRE-ICA LINE FILTER (CHANGE 1b): it is gated on selstring[12], so
+# keeping selstring[12] = 0 here is what keeps it OFF the panel. Filtering the
+# panel run moved 39 of 48 z-scores on QA study A (EC), several past 2 sigma.
+# Do not turn the cascade on in this pass without also setting
+# CLEANEEG_PREICA=off.
 CASC_OLD = """    selstring[6] = 1
     selstring[8] = 1
 """
@@ -346,6 +404,22 @@ LEGEND_NEW = """
             valueh = 0
 """
 patch("files/create_report_pdf.py", LEGEND_OLD, LEGEND_NEW, base="staged")
+
+# 2e'. Panel name masking (89213a2, live 2026-10-13). The "Name:" line printed
+#      the last 30 characters of the file name, so part of the patient name
+#      showed. panel_label (files/deidentify.py, staged below) masks it the way
+#      the cascade title is masked. Display only.
+patch("files/create_report_pdf.py",
+      "import pandas as pd\n",
+      "import pandas as pd\nfrom files.deidentify import panel_label\n",
+      base="staged")
+patch("files/create_report_pdf.py",
+      "    short_name = short_name.split('/')[-1] if '/' in short_name else short_name.split('\\\\')[-1]\n"
+      "    paragraph = Paragraph('Name: ' + short_name, normal_style)\n",
+      "    # Masked like the cascade header: names in the file name become '#'.\n"
+      "    short_name = panel_label(name or short_name)\n"
+      "    paragraph = Paragraph('Name: ' + short_name, normal_style)\n",
+      base="staged")
 
 # 2e. Serialize the watchdog. Today it fires subprocess.Popen per upload with
 #     no limit. Panel-only, concurrent studies merely compete for CPU; with
