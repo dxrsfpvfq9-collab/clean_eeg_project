@@ -39,7 +39,8 @@ Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 py -m pytest -v
 ```
 
-7 tests in `tests/unit/` — smoke tests + tfcfilter sanity checks. ~1s runtime.
+14 tests in `tests/unit/` — smoke tests, tfcfilter sanity checks and the
+de-identification rules. ~1s runtime.
 
 ## Sample EDFs
 
@@ -426,6 +427,16 @@ cascade path and log quieting; it is NOT the dev tree (no PLTS,
 discriminant, page-3 legend or pre-ICA filter). Both servers use
 `C:\app\MyCleanEEG\CleanEEGProject`. **Production has no `py` launcher**:
 run `c:\users\tcollura\appdata\local\programs\python\python312\python`.
+
+**Patient names are masked on both outputs** (servers since 2026-10-13).
+`files/deidentify.py`: `deidentify_label` for the cascade title,
+`panel_label` for the panel's "Name:" line on all three pages — the whole
+base name is masked, then the 30-character tail kept so page 1 still fits
+before Date. Any purely alphabetic word not in `KNOWN_TERMS` becomes `#`; a
+new technical term in file names needs adding there or it gets masked. The
+watchdog log still carries full paths (`SHORT NAME:`, file names) — it stays
+on the server. Cite studies in docs and commits by neutral label (`QA study
+A..E`), never by name.
 
 There's also `C:\BrainPanel\CleanEEGProject - development\` as a third
 copy.

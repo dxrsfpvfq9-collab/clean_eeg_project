@@ -1,6 +1,7 @@
 # Server update — September 2026
 
-> **Status: deployed** — development server 2026-10-02, production 2026-10-08.
+> **Status: deployed** — development server 2026-10-02, production 2026-10-08;
+> panel name masking (`create_report_pdf.py`, `deidentify.py`) 2026-10-13.
 > What went where and how it was verified: `DEPLOYED.md`.
 
 Two changes for the STS EEG screening server:

@@ -26,3 +26,19 @@ def test_dotted_and_hyphenated_names():
 def test_age_over_89_generalised():
     assert d("9997 Robin K AGE 93 EO") == "9997 ##### # AGE 90+ EO"
     assert d("9997 Robin K AGE 89 EO") == "9997 ##### # AGE 89 EO"
+
+
+# ---- panel_label: the Brain Panel's "Name:" line --------------------------
+from files.deidentify import panel_label as p
+
+
+def test_panel_masks_whole_name_then_keeps_30_char_tail():
+    label = p(r"c:/inetpub/Practitioners\dr1/9999 Jordan Smithers 02.001.01 AGE 12  EO")
+    assert label == "######## 02.001.01 AGE 12  EO"
+    assert len(label) <= 30 and "Jordan" not in label and "Smithers" not in label
+
+
+def test_panel_short_names_unchanged_and_no_leading_separator():
+    assert p(r"C:\x\STLE qEEG 03.001.01 AGE 10 EC") == "STLE qEEG 03.001.01 AGE 10 EC"
+    assert p(r"C:\x\raw_130399") == "raw_130399"
+    assert p("c:/a/9999 - Jordan AB 04.000.02 AGE 9 EC") == "###### ## 04.000.02 AGE 9 EC"
