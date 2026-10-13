@@ -20,6 +20,7 @@ import numpy as np
 import datetime
 import os
 import pandas as pd
+from files.deidentify import panel_label
 
 def create_report_pdf(name, short_name, channel_labels_short, name_strings, range_strings, report_strings, metrics, montage, excel_file_path, n, numpages, myvisualsigs, electrode_names):
 
@@ -71,7 +72,8 @@ def create_report_pdf(name, short_name, channel_labels_short, name_strings, rang
 #    paragraph += Paragraph("It is based on calculations using signal processing methods to extract metrics related to the abundance and timing of recognized rhythms and patterns", normal_style)
     paragraph.wrapOn(pdf_file, 600, 100)
     paragraph.drawOn(pdf_file, 15, 750)
-    short_name = short_name.split('/')[-1] if '/' in short_name else short_name.split('\\')[-1]
+    # Masked like the cascade header: names in the file name become '#'.
+    short_name = panel_label(name or short_name)
     paragraph = Paragraph('Name: ' + short_name, normal_style)
     paragraph.wrapOn(pdf_file, 400, 100)
     paragraph.drawOn(pdf_file, 305, 730)

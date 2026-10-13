@@ -78,3 +78,17 @@ def deidentify_label(name):
         out.append(part)
         prev_word = word.upper()
     return "".join(out)
+
+
+def panel_label(name, width=30):
+    """Masked study label for the Brain Panel header.
+
+    The panel used to print the last 30 characters of the path unmasked, which
+    showed the surname. Mask the whole base name first, then keep the same
+    30-character tail so the page-1 header still fits before the Date field.
+    The tail is where the session code, age and condition sit.
+    """
+    label = deidentify_label(name)
+    if len(label) > width:
+        label = label[-width:].lstrip(" -_")
+    return label

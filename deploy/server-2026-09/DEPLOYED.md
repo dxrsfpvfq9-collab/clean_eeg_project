@@ -65,11 +65,24 @@ Cascade `.imagecascade.pdf`, 42 pages (overview + table + 20 × 2):
 - No component in 59–61 Hz, so no `(line)` rows — expected on a clean study.
 - The cascade title de-identifies the name (`##### #########`).
 
-## Known, not caused by this update
+## Follow-up: panel name masking — staged 2026-10-09, NOT yet on the servers
 
-- The panel header prints the tail of the filename, so part of the patient
-  name can show (`Name: <surname> 02.001.01 …`). Production did this before.
-  The cascade header does not.
+The panel used to print the last 30 characters of the file name unmasked, so
+part of the patient name showed (`Name: <surname> 02.001.01 …`) — production
+did this before the update; the cascade header never did. The panel now masks
+the name the same way (`files/deidentify.py`, new `panel_label`), keeping the
+30-character tail so the page-1 header still fits before the Date field:
+`Name: ######## 02.001.01 AGE 12 EO`. Display only.
+
+To roll it out, copy just these two over the deployed ones (back up first):
+
+| File | Into | Bytes |
+|---|---|---|
+| `staged\files\create_report_pdf.py` | project `files\` | 60110 |
+| `staged\files\deidentify.py` | project `files\` | 4497 |
+
+No watchdog restart: each panel is a new process. Check the next panel's
+header on all three pages.
 
 ## Watch for the first days
 

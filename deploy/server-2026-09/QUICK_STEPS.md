@@ -20,8 +20,8 @@ C:\BrainPanel\clean_eeg_project 2025\deploy\server-2026-09\staged
 | `files\Component_selector.py` | project `files\` | 61595 |
 | `files\Montage_6.py` | project `files\` | 56741 |
 | `files\color_strip.py` | project `files\` | 1767 |
-| `files\deidentify.py` | project `files\` | 3967 |
-| `files\create_report_pdf.py` | project `files\` | 60041 |
+| `files\deidentify.py` | project `files\` | 4497 |
+| `files\create_report_pdf.py` | project `files\` | 60110 |
 | `files\dummy_gui.py` | project `files\` | 56814 |
 | `files\edftotextbycommandplotproc.py` | project `files\` | 4384 |
 | `files\edftotextbynameplotproc.py` | project `files\` | 58024 |
