@@ -94,7 +94,11 @@ header on all three pages.
   for cascades; if the cascade queue keeps growing, set `CASCADE_PASS = False`
   and render cascades on a workstation with `batch_imagecascade.py`.
 
-## Follow-up: pre-ICA 60 Hz filter for cascades — STAGED 2026-10-13, not deployed
+## Follow-up: pre-ICA 60 Hz filter for cascades — deployed 2026-10-13
+
+Copied onto BOTH servers 2026-10-13 from `update-2026-10-13-preica/` and tested
+by Tom: the 60 Hz spike is gone from the cascade and the rest of the ICA
+decomposition is otherwise unchanged in appearance.
 
 Two files to copy: `files\edftotextbynameplotproc.py` (59890 bytes) and
 `run_cascade.py` (2995 bytes, comment only). No restart flags change; restart the

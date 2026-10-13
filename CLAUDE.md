@@ -95,7 +95,7 @@ dev cascade run and a dev panel-only run of the same EDF disagree on ~40
 of 48 metrics. When comparing dev output against production, always
 compare panel-mode against panel-mode.
 
-**On the servers: cascade pass only (staged 2026-10-13, not yet deployed).**
+**On the servers: cascade pass only (live on both servers since 2026-10-13).**
 The two-pass flow makes this safe. `module7.py` (panel) ships with
 `selstring[12]=0` and stays unfiltered; only `run_cascade.py` sets it, so
 only the cascade's ICA is filtered. The cost is that the cascade no longer
