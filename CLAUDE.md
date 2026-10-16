@@ -90,6 +90,26 @@ frequency + 60 Hz power fraction after ICA (`CLEANEEG_ICADEBUG_EXIT=1`
 also stops right after ICA — a fast, headless A/B of filter options with
 no render).
 
+**Server before/after check (2026-10-16, QA study F, EC, age 37).** The
+2026-10-12 (unfiltered) and 2026-10-15 (filtered) server cascades of one
+study were compared. Before, the largest component (25.6%, CZ) was the
+central alpha source with mains folded in: FFT peak `60.0 (line)`. After,
+the same source (same topography, cingulate BA 23) is 19.7% at 9.3 Hz —
+the ~6% difference was the line. All 20 components match one-to-one with
+identical FFT peaks and the same five Machine rejects (T3, T4, FP1, F7,
+F8). Things that DO change and are not errors:
+
+- **45–55 Hz roll-off** on every cascade FFT and waterfall (the lp50).
+  Harmless on alpha; a muscle component will look less high-frequency
+  than it is — the one real trade-off.
+- **Neighbour-region localization shifts** on 5 small components (e.g.
+  T3-max reject moved postcentral BA 40 → superior temporal BA 21, now
+  matching its scalp max). Expected when the unmixing changes slightly.
+- **Sign flips.** ICA polarity is arbitrary, so a component's mixing bars
+  and head map can invert between runs, and the overview heatmap's colour
+  balance shifts — `imshow` there has no `vmin`/`vmax`, so white is not
+  zero. Display only; do not read old-vs-new colour as a change.
+
 **Verification hazard:** because the filter is gated on `selstring[12]`, a
 dev cascade run and a dev panel-only run of the same EDF disagree on ~40
 of 48 metrics. When comparing dev output against production, always
