@@ -31,6 +31,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py batch_imagecascade.py "<folder>"` | Renders IMG cascades over a folder, newest-first and resumable (`--redo`, `--list`). Needs a live desktop. |
 | `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
 | `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
+| `py tools/source_summary.py "<edf>"` | **Prototype.** One-page source summary of a cascade → `<edf>.sources.pdf`. Needs the `.sources.npz` sidecar. See "Source summary" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -481,6 +482,30 @@ Guards: warns and excludes Global STD when either panel shows 1000 (pre-fix);
 warns when all values are identical (same recording reprocessed — common in
 the QA folder, where `.reviewed` re-runs share a base name), on version or
 condition mismatch, and on EC/EO sessions more than 2 h apart.
+
+## Source summary (prototype, `tools/source_summary.py`)
+
+One page in place of the 20-40 cascade pages: a cortex with each accepted
+component's sLORETA core coloured by its FFT-peak band (delta/theta/alpha/
+beta/gamma), a variance bar (brain sources vs removed artifact), and one table
+row per accepted source (%, band, side + gyrus, Brodmann area + a textbook
+"typically involved in" line from `BA_FUNCTION`).
+
+**Input is a sidecar, not the PDF.** The cascade's brain pages are raster
+images, so peak coordinates cannot be read back. The cascade block in
+`files/Montage_6.py` now also writes `<edf>.sources.npz` (voxel grid, per-
+component voxel CSD, peak xyz + labels, %, FFT peak, max site, machine/user
+decision, display `order`, de-identified label; ~0.5 MB). Arrays are in
+FastICA order; `order` maps display rank -> original index. Written inside the
+cascade try-block in its own try, display only. Cascades rendered before this
+change have no sidecar and must be re-run. Not on the servers (they run the
+`deploy/server-2026-09` set).
+
+Painting choices: only components >= 2% (`MIN_DRAW_PCT`) are drawn, and only
+their core (95th voxel percentile, floor 70% of peak) -- the cascade pages'
+87th-percentile threshold, unioned over ~15 sources, paints the whole cortex.
+Where cores overlap, the larger component (alpha x %) wins. 59-61 Hz
+components count as artifact regardless of the Accept/Reject decision.
 
 ## Production reference
 

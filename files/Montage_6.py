@@ -328,6 +328,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             source_regions = []
             fft_peaks = []
             percs = []
+            _src_pts, _src_csd = [], []      # per component, for the .sources.npz sidecar
             screenshots.append(icaeditfilename)
             pdf = FPDF()
 #  BRAIN PAGES: rendered by process/brain_render.py (numpy + matplotlib, no
@@ -344,6 +345,8 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
               CV.update()
               fft_peaks.append(peak)
               percs.append(perc)
+              _src_pts.append(source_point)
+              _src_csd.append(voxel_csd)
             
               if selstring[12] == 1:
                     screenshot = save_gui_screenshot(CV)  #if image cascade is selected
@@ -410,6 +413,27 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
 
             data_array = [components_s, percs_s, max_sites_s, num_above_half_s, kr_machine_s, kr_user_s, lobes_s, regions_s, areas_s, fft_peaks_s]
             print(data_array)
+            # Sidecar for tools/source_summary.py (the one-page source summary):
+            # each component's sLORETA voxel CSD and peak, which the rendered
+            # brain pages carry only as pixels. Arrays are in FastICA order;
+            # `order` maps display rank -> original index. Display only.
+            try:
+                _base = img_cascade_file[:-len(".imagecascade.pdf")] if img_cascade_file.endswith(".imagecascade.pdf") else os.path.splitext(img_cascade_file)[0]
+                np.savez_compressed(
+                    _base + ".sources.npz",
+                    vox=location_matrix[:, 0:3].astype(np.float32),
+                    csd=np.asarray(_src_csd, dtype=np.float32),
+                    peak_xyz=np.asarray([[float(c) for c in sp[:3]] for sp in _src_pts], dtype=np.float32),
+                    peak_label=np.asarray([[str(c) for c in sp[3:6]] for sp in _src_pts]),
+                    pct=np.asarray(percs, dtype=np.float32),
+                    fft_peak=np.asarray(fft_peaks, dtype=np.float32),
+                    max_site=np.asarray([str(m) for m in max_sites]),
+                    machine=np.asarray([str(k) for k in kr_machine]),
+                    user=np.asarray([str(k) for k in kr_user]),
+                    order=np.asarray(order, dtype=np.int32),
+                    label=np.asarray(str(tlabel)))
+            except Exception as _e:
+                print("[sources.npz not written:", type(_e).__name__, _e, "]")
             #---------------------------------------------------------------------------------------------------------------------------
             if selstring[12] == 1:
               # Every cascade page carries this title in a strip across the
