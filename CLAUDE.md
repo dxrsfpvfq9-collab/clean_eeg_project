@@ -507,6 +507,29 @@ their core (95th voxel percentile, floor 70% of peak) -- the cascade pages'
 Where cores overlap, the larger component (alpha x %) wins. 59-61 Hz
 components count as artifact regardless of the Accept/Reject decision.
 
+**Nodes (option 1).** A component's sLORETA map often has several peaks (a
+zero-lag network ICA kept as one component, or a bilateral source). Secondary
+local maxima count as nodes only if >= 70% of peak, >= 25 mm from a stronger
+node, AND the map dips below 75% of their value on the line between them
+(`NODE_*`). Distance alone was tried first: 19-channel sLORETA is ripply and
+it split one blob into 5-11 "nodes". Peak labels are fragile for the same
+reason -- e.g. a "cingulate" component whose premotor maximum is 0.98 of it.
+
+**Page 2: networks (option 2).** Needs `sources` (component time courses,
+256 Hz) in the sidecar -- adds ~10-18 MB per study. Per band (theta/alpha/
+beta): log Hilbert envelopes in 1 s bins, **partial** Spearman r between the
+accepted components >= 1%, holding all other accepted AND the rejected
+(artifact) components constant; family-wise 5% threshold from 500
+circular-shift surrogates (seed 0); groups by average linkage cut at that
+threshold. Plain correlation was tried first and is useless: nearly every
+pair r 0.2-0.6 (a whole-recording vigilance/amplitude/artifact factor), so
+the groups swallowed everything. Each group's %-weighted map, and each single
+component, is scored against approximate DMN / salience / executive-control
+node centres (15 mm spheres, match = >= 2x chance) -- a placeholder for a
+real atlas (Yeo 7-network). Caveat printed on the page: eye artifacts
+localize to orbitofrontal/anterior insula, i.e. onto salience nodes, so a
+delta-band "salience" match is suspect. Not validated beyond QA study F EC/EO.
+
 ## Production reference
 
 `C:\BrainPanel\CleanEEGProject - production\` is a separate snapshot of

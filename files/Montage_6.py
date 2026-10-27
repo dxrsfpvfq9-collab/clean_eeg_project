@@ -415,7 +415,8 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             print(data_array)
             # Sidecar for tools/source_summary.py (the one-page source summary):
             # each component's sLORETA voxel CSD and peak, which the rendered
-            # brain pages carry only as pixels. Arrays are in FastICA order;
+            # brain pages carry only as pixels, plus the component time courses
+            # (~10 MB for a 10-min study) for the network page. Arrays are in FastICA order;
             # `order` maps display rank -> original index. Display only.
             try:
                 _base = img_cascade_file[:-len(".imagecascade.pdf")] if img_cascade_file.endswith(".imagecascade.pdf") else os.path.splitext(img_cascade_file)[0]
@@ -431,6 +432,9 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
                     machine=np.asarray([str(k) for k in kr_machine]),
                     user=np.asarray([str(k) for k in kr_user]),
                     order=np.asarray(order, dtype=np.int32),
+                    # component time courses (256 Hz), for envelope coupling
+                    sources=np.asarray(myfilteredsigs[:n, :int(numsamples)], dtype=np.float32),
+                    fs=np.float32(256),
                     label=np.asarray(str(tlabel)))
             except Exception as _e:
                 print("[sources.npz not written:", type(_e).__name__, _e, "]")
