@@ -30,6 +30,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py run_cascade.py "<path-to-edf>"` | **Cascade only** (`selstring[12]=1`, `[8]=0`) — no report. Second pass of the server flow; the watchdog runs it after `module7.py`. |
 | `py batch_imagecascade.py "<folder>"` | Renders IMG cascades over a folder, newest-first and resumable (`--redo`, `--list`). Needs a live desktop. |
 | `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
+| `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -440,6 +441,46 @@ The CLI reads with `mne.io.read_raw_edf(..., encoding='latin1')` × 1e6,
 matching the pipeline. Note `pyedflib` refuses several of these EDFs as
 non-compliant; the pipeline only opens with pyedflib when `selstring[8]`
 and `[12]` are both unset, so report and cascade modes never hit it.
+
+## Study comparison (prototype, `tools/compare_studies.py`)
+
+Reads finished outputs, recomputes nothing through the pipeline: panels via
+`research/validation_2026/panel_parser.py`, cascade tables via
+`cascade_extract.py`, EDF headers for recording time (A/B ordered by it).
+Studies are named by any of `.edf` / `.icale.rep.pdf` / `.imagecascade.pdf`.
+
+- **prepost** — 3 pages: OOB counts per group and the six discriminant scores
+  A→B, the cascade component make-up before/after (stems at each component's
+  FFT peak), all 48 z-scores A→B, and the panel's own high/low sentences for
+  rows that resolved or went out of range (read from `create_report_pdf.py`
+  with `ast`, not copied). `|Δ|z|| >= 1` is a display convention: panel
+  test-retest variability has not been measured.
+- **eceo** — 2 pages: alpha blocking. **The index comes from the EDFs**
+  (median-Welch posterior O1/O2/P3/P4 power in EC peak ±2 Hz, left and right
+  separately), not the panel. The panel's PDR rows are `abs(|alpha| − fixed
+  threshold)` on a signal already rescaled by `10/stdmeas`, so an EO/EC ratio
+  of them is not a reactivity percentage. No z-scores (EC_191 is eyes-closed).
+  The cascade page headlines posterior-max alpha sources EC→EO.
+
+**Which panel rows track blocking** (`research/validation_2026/eceo_pdr_validation.py`,
+147 same-session QA pairs, Spearman vs log EO/EC EDF alpha power): only PDR
+Burst Width (falls, rho 0.39), Fractal Dimension (rises, 0.33), PDR Magnitude
+(falls, 0.22) and PDR Synchrony (rises, 0.22). Every other row, including PDR
+Max Amplitude, Max Post., Sinusoidal, Symmetry, Alpha Speed and Alpha Peak, has
+|rho| <= 0.14. Cascade posterior alpha does better (0.61). Cross-validated
+(10-fold ridge): panel PDR rows alone rho 0.40 and robust-vs-not 56% (base
+rate 57%) — **not a substitute for the cascade or the EDF**; cascade 0.58/71%,
+cascade + PDR rows 0.65/74%. The report therefore shows the four rows with
+their expected direction and a count of how many agree with the EDF; <= 1 of 4
+is a soft prompt (17% of robust pairs, 59% of paradoxical). **PDR Moment 1 is
+the same number as PDR Magnitude** — identical in all 294 QA recordings — so
+it is not counted separately. Median EDF attenuation across the 147 pairs was
+62% (IQR 29–80%), 12% paradoxical.
+
+Guards: warns and excludes Global STD when either panel shows 1000 (pre-fix);
+warns when all values are identical (same recording reprocessed — common in
+the QA folder, where `.reviewed` re-runs share a base name), on version or
+condition mismatch, and on EC/EO sessions more than 2 h apart.
 
 ## Production reference
 
