@@ -138,6 +138,30 @@ def code_version():
 
 
 # ------------------------------------------------------------------ run one
+FLAT_UV = 0.01        # a channel whose whole-recording SD is below this is dead
+MIN_SECONDS = 30      # the pipeline needs at least two 10 s epochs plus margin
+
+
+class Unusable(Exception):
+    """The recording holds no usable EEG; stored as status 'unusable'."""
+
+
+def check_usable(path):
+    """Raise Unusable for a recording that is mostly flat or too short. The
+    pipeline 'succeeds' on a file whose channels are a constant (some HR-channel
+    exports are 18-19 of 19 flat) and stores meaningless components."""
+    import mne
+    mne.set_log_level("ERROR")
+    raw = mne.io.read_raw_edf(path, encoding="latin1", preload=True)
+    secs = raw.n_times / raw.info["sfreq"]
+    if secs < MIN_SECONDS:
+        raise Unusable(f"recording is {secs:.0f} s")
+    d = raw.get_data() * 1e6
+    flat = int((d.std(axis=1) < FLAT_UV).sum())
+    if flat > d.shape[0] / 2:
+        raise Unusable(f"{flat} of {d.shape[0]} channels flat")
+
+
 def run_sidecar(st, store, timeout):
     work = os.path.join(store, "work", st["id"])
     os.makedirs(work, exist_ok=True)
@@ -263,17 +287,40 @@ def main():
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--pdf", action="store_true", help="also write <store>/pdf/<id>.sources.pdf")
+    ap.add_argument("--check-unusable", action="store_true",
+                    help="re-check stored ok studies for flat / too-short recordings")
+    ap.add_argument("--errors-only", action="store_true",
+                    help="retry only studies whose last run failed (safe beside a running batch)")
     ap.add_argument("--features-only", action="store_true",
                     help="re-extract features from existing sidecars (after an analysis change)")
     a = ap.parse_args()
 
     for d in ("npz", "logs", "work", "pdf"):
         os.makedirs(os.path.join(a.store, d), exist_ok=True)
-    con = sqlite3.connect(os.path.join(a.store, "sources.db"))
+    con = sqlite3.connect(os.path.join(a.store, "sources.db"), timeout=60)   # a second batch may share it
     con.executescript(SCHEMA)
     studies = discover(a.root)
-    done = {r[0] for r in con.execute("SELECT id FROM studies WHERE status='ok'")}
+    done = {r[0] for r in con.execute("SELECT id FROM studies WHERE status IN ('ok', 'unusable')")}
     todo = [s for s in studies if a.redo or a.features_only or s["id"] not in done]
+    if a.errors_only:
+        failed = {r[0] for r in con.execute("SELECT id FROM studies WHERE status='error'")}
+        todo = [s for s in studies if s["id"] in failed]
+    if a.check_unusable:       # apply check_usable to studies stored before it existed
+        n_bad = 0
+        for s in studies:
+            if s["id"] in done:
+                try:
+                    check_usable(s["path"])
+                except Unusable as exc:
+                    n_bad += 1
+                    for t in ("components", "nodes", "edges", "groups", "study_features", "panel"):
+                        con.execute(f"DELETE FROM {t} WHERE study_id=?", (s["id"],))
+                    con.execute("UPDATE studies SET status='unusable', error=? WHERE id=?",
+                                (str(exc), s["id"]))
+                    print(f"  {s['id']} unusable: {exc}")
+        con.commit()
+        print(f"{n_bad} stored studies re-marked unusable")
+        return
     if a.features_only:
         todo = [s for s in todo if os.path.exists(os.path.join(a.store, "npz", s["id"] + ".sources.npz"))]
     if a.limit:
@@ -294,12 +341,18 @@ def main():
         try:
             npz = os.path.join(a.store, "npz", s["id"] + ".sources.npz")
             if not a.features_only:
+                check_usable(s["path"])
                 npz = run_sidecar(s, a.store, a.timeout)
             pdf_out = os.path.join(a.store, "pdf", s["id"] + ".sources.pdf") if a.pdf else None
             feats = extract(con, s["id"], npz, pdf_out)
             has_panel = load_panel(con, s["id"], s["path"])
             msg = (f"alpha {feats['alpha_pct']:.0f}%  artifact {feats['artifact_pct']:.0f}%  "
                    f"panel {'yes' if has_panel else 'no'}")
+        except Unusable as exc:
+            status, err = "unusable", str(exc)
+            msg = err
+            for t in ("components", "nodes", "edges", "groups", "study_features", "panel"):
+                con.execute(f"DELETE FROM {t} WHERE study_id=?", (s["id"],))
         except Exception as exc:
             status, err = "error", f"{type(exc).__name__}: {exc}"[:2000]
             msg = err[:120]

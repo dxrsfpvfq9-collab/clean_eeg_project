@@ -88,7 +88,24 @@ def edf_to_text_by_name_plot_proc(name, outputdir1, plot_num, length, montage, s
     print("file size is:", file_size, "kbytes =:", file_size/1024)
 
     raw = mne.io.read_raw_edf(edf_file, encoding='latin1')
-    
+    # Drop non-EEG channels (e.g. 'HR' heart rate). The label loop below
+    # (~line 220) maps a channel by substring ('Fp1-LE' -> 'FP1', 'T7' -> 'T3',
+    # 'AUX1' -> 'AX1', ...); a label matching NONE of its tokens was left as
+    # is, made the montage sort (~line 475) raise "'HR' is not in list", and
+    # the study produced nothing. Exactly those labels are dropped here, so a
+    # file that already ran drops nothing and its output is unchanged. Keep
+    # _MAP_TOKENS in step with that loop.
+    _MAP_TOKENS = ('FP1', 'FP2', 'F7', 'F8', 'F3', 'F4', 'FZ', 'C3', 'T3', 'T7', 'CZ', 'C4', 'T4',
+                   'T8', 'T5', 'P7', 'P3', 'PZ', 'P4', 'T6', 'P8', 'O1', 'O2', 'A2', 'STATUS',
+                   'AUX1', 'AUX2', 'A1')
+    _SORTABLE = {'FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8', 'T3', 'C3', 'CZ', 'C4', 'T4', 'T5',
+                 'P3', 'PZ', 'P4', 'T6', 'O1', 'O2', 'A1', 'A2', 'AX1', 'AX2'}
+    _non_eeg = [ch for ch in raw.ch_names
+                if ch not in _SORTABLE and not any(t in ch.upper() for t in _MAP_TOKENS)]
+    if _non_eeg and len(_non_eeg) < len(raw.ch_names):
+        print("DROPPING NON-EEG CHANNELS:", _non_eeg)
+        raw.drop_channels(_non_eeg)
+
     print("mne opened file")
     print("RAW", raw)
     if ('EO' in name):

@@ -551,6 +551,22 @@ components, nodes, edges, groups, study_features, panel (48 values + z from
 the existing production panel). `--features-only` re-analyses stored sidecars.
 First full run started 2026-10-29 (1,709 EDFs, ~12 h).
 
+Statuses: `ok`, `error` (pipeline failed; `--errors-only` retries them beside
+a running batch), `unusable` (`check_usable`: more than half the channels flat,
+SD < 0.01 uV, or under 30 s -- the pipeline "succeeds" on all-constant HR-channel
+exports and stores garbage; `--check-unusable` re-checks stored studies).
+
+**Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
+after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
+sort with `'HR' is not in list` -- no panel, on the servers too (those studies
+have no production `.icale.rep.pdf`). Dropped = labels matching NONE of the
+label loop's substring tokens (`_MAP_TOKENS`) and not already a montage name,
+so every file that ran before drops nothing: verified on raw_130399, all 48
+values and z identical, and no successful batch study logged a drop. Match
+like the loop does (substring, upper-cased): an exact-match first version
+dropped `Fz`/`Cz`/`Pz` and broke 3 studies until it was corrected. Dev only;
+the servers' deploy set does not have it.
+
 ## Production reference
 
 `C:\BrainPanel\CleanEEGProject - production\` is a separate snapshot of
