@@ -32,6 +32,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
 | `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
 | `py tools/source_summary.py "<edf>"` | **Prototype.** One-page source summary of a cascade → `<edf>.sources.pdf`. Needs the `.sources.npz` sidecar. See "Source summary" below. |
+| `py tools/source_batch.py [--pdf]` | Builds the **source database** over the QA corpus, newest first, resumable. Sidecar-only ICA pass per study (~25 s, no windows), store `C:\BrainPanel\source_db`. See "Source database" below and `docs/BRAINVIEW_ROADMAP.md`. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 
@@ -529,6 +530,26 @@ node centres (15 mm spheres, match = >= 2x chance) -- a placeholder for a
 real atlas (Yeo 7-network). Caveat printed on the page: eye artifacts
 localize to orbitofrontal/anterior insula, i.e. onto salience nodes, so a
 delta-band "salience" match is suspect. Not validated beyond QA study F EC/EO.
+
+## Source database (`tools/source_batch.py`)
+
+`CLEANEEG_SIDECAR_ONLY=1` (read in `Montage_6.py` at the top of the cascade
+block) writes ONLY `<edf>.sources.npz`: no component pages, brain pages, PDF or
+Tk windows. The per-component numbers come from `process/source_sidecar.py`,
+which repeats `dummy_gui`'s arithmetic exactly, quirks included (the i=0 epoch
+wraps to the last 2560 samples). Verified on QA study F (EC): every sidecar
+array identical to the full on-screen cascade's, 21 s instead of minutes.
+It runs through `run_cascade.py`, so it is the cascade decomposition (pre-ICA
+line filter on), and `run_cascade` exits 1 ("CASCADE MISSING") by design.
+
+The batch copies each EDF to `<store>/work` first, so nothing is written next
+to the Dropbox originals and their production panels are never overwritten (a
+dev cascade-mode panel would differ on ~40 of 48 rows). The store holds paths
+with patient names, hence outside the repo and Dropbox; studies are keyed by a
+path hash, clients by a hash of the EDF patient field. Tables: studies,
+components, nodes, edges, groups, study_features, panel (48 values + z from
+the existing production panel). `--features-only` re-analyses stored sidecars.
+First full run started 2026-10-29 (1,709 EDFs, ~12 h).
 
 ## Production reference
 

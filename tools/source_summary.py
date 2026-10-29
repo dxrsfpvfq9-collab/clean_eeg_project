@@ -416,6 +416,8 @@ def coupling(e, e_art, rng):
     amplitude, artifact bursts) -- and the groups swallowed most components.
     Partialling it out leaves the DIRECT couplings, and can show opposition."""
     n, T = e.shape
+    if n < 2:                                   # nothing to couple
+        return np.ones((n, n)), float("nan")
     ranks = np.apply_along_axis(rankdata, 1, np.vstack([e, e_art]) if len(e_art) else e)
     r = _partial(ranks, n)
     iu = np.triu_indices(n, 1)
@@ -444,7 +446,10 @@ def best_template(sc):
     return (name, sc[name]) if sc[name] >= NET_ENRICH else (None, sc[name])
 
 
-def page_networks(data, pdf):
+def analyze_networks(data):
+    """Coupling per band, groups and template matches -- no drawing. Also
+    sets c["tmpl"] on every coupled component. Used by page_networks and by
+    tools/source_batch.py (which stores the result)."""
     comps = data["comps"]
     tot = sum(c["pct"] for c in comps) or 1.0
     use = [c for c in comps if c["accept"] and 100 * c["pct"] / tot >= MIN_COUPLE_PCT]
@@ -477,6 +482,14 @@ def page_networks(data, pdf):
                                    pct=100 * sum(use[i]["pct"] for i in mem) / tot))
         groups.sort(key=lambda g: -g["pct"])
         res.append(dict(band=bname, r=r, thr=thr, groups=groups))
+    return use, res
+
+
+def page_networks(data, pdf, net=None):
+    use, res = net or analyze_networks(data)
+    comps = data["comps"]
+    tot = sum(c["pct"] for c in comps) or 1.0
+    vox = data["vox"]
 
     fig = plt.figure(figsize=(11.69, 8.27), dpi=150, facecolor="white")
     fig.text(0.03, 0.965, "Brain Sources — which ones work together", fontsize=17,

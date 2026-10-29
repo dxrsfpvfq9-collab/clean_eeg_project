@@ -340,7 +340,22 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             if _skip_brain:
                 print("[CLEANEEG_NO_BRAIN set: skipping 3D source-localization pages]")
             _pages_per_comp = 1 if _skip_brain else 2
-            for idx in range(1, n+1):
+#  CLEANEEG_SIDECAR_ONLY=1: write ONLY <edf>.sources.npz -- no component pages,
+#  no brain pages, no PDF, no Tk windows. Same numbers as dummy_gui, computed by
+#  process/source_sidecar.py; used by tools/source_batch.py to build the source
+#  database at one ICA pass per study instead of a full on-screen render.
+            _sidecar_only = os.environ.get("CLEANEEG_SIDECAR_ONLY", "") not in ("", "0")
+            if _sidecar_only:
+                print("[CLEANEEG_SIDECAR_ONLY set: sources.npz only, no cascade pages or PDF]")
+                from process.source_sidecar import compute_components
+                _comps, location_matrix = compute_components(ica_mixing, channel_labels_short, myfilteredsigs, n, numsamples)
+                for _c in _comps:
+                    fft_peaks.append(_c["peak"])
+                    percs.append(_c["perc"])
+                    _src_pts.append(_c["source_point"])
+                    _src_csd.append(_c["csd"])
+                    source_regions.append(str(_c["source_point"][3:]))   # what dummy_brain returns
+            for idx in (range(0) if _sidecar_only else range(1, n+1)):
               CV, source_point, location_matrix, max_value, max_index, reshaped_list, voxel_csd, peak, perc = dummy_gui(tlabel, length, numsamples, ica_mixing, idx, selected_channel_list, selected_channel_reasons, channel_labels_short, myfilteredsigs, n, disp_idx=pos_of_orig[idx-1]+1)
               CV.update()
               fft_peaks.append(peak)
@@ -405,7 +420,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             # screenshots layout: [overview, comp_1, brain_1, comp_2, brain_2, ...]
             # or, with CLEANEEG_NO_BRAIN, [overview, comp_1, comp_2, ...].
             sorted_screenshots = [screenshots[0]]
-            for orig_idx in order:
+            for orig_idx in ([] if _sidecar_only else order):
                 base = 1 + _pages_per_comp * orig_idx
                 for _k in range(_pages_per_comp):
                     sorted_screenshots.append(screenshots[base + _k])
@@ -439,7 +454,7 @@ def montage_6(outname, selstring, myfilteredsigs, data, numsamples, ica, ica_com
             except Exception as _e:
                 print("[sources.npz not written:", type(_e).__name__, _e, "]")
             #---------------------------------------------------------------------------------------------------------------------------
-            if selstring[12] == 1:
+            if selstring[12] == 1 and not _sidecar_only:
               # Every cascade page carries this title in a strip across the
               # top; each image is fitted into the area below the strip.
               CASCADE_TITLE = "BrainMaster ICA Deconvolution"
