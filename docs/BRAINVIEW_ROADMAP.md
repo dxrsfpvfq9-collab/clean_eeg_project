@@ -29,6 +29,7 @@ Tables (`sources.db`):
 - `chan_power` — per 10-20 site, straight from the EDF (no ICA): absolute and relative band power, theta/beta, alpha peak, 60 Hz share (`tools/edf_power.py`)
 - `edf_features` — one row per study: theta/beta at Cz/Fz/mean, posterior alpha peak and relative alpha, frontal theta, F4/F3 alpha asymmetry, worst 60 Hz share
 - `ref_models` / `ref_z` — age-by-condition reference models per feature and every study's z + age-adjusted percentile (`tools/reference_ranges.py`)
+- `labels` / `report_pdr` — Doctor's-Report outcomes per study (+ alpha-anchored `pdr_slow`) and the reader's stated PDR Hz (`tools/label_join.py`)
 - `panel` — the 48 values and z-scores of the study's existing production `.icale.rep.pdf`
 
 ```
@@ -76,5 +77,5 @@ py tools/source_batch.py --features-only  # re-analyse stored sidecars after an 
 1. Let the batch finish; check failures (`studies.status='error'`).
 2. ~~Per-channel band power + theta/beta into the batch~~ — done (`--edf-power`, 2026-11-03).
 3. ~~Age/condition reference ranges for `study_features` + per-channel power~~ — done (`tools/reference_ranges.py`, 2026-11-03; plots in `<store>/reference_ranges.pdf`).
-4. Label join and the first "which features predict what" table.
+4. ~~Label join and the first "which features predict what" table~~ — done (`tools/label_join.py`, 2026-11-03; `research/validation_2026/out/SOURCE_DB_LABEL_JOIN.md`). Headlines: EDF alpha peak tracks the reader's PDR (rho 0.60, median 0.45 Hz) and flags reader-confirmed PDR slowing (AUC 0.84 inverted); theta/beta and frontal theta are higher in clinically abnormal EC studies (AUC 0.65-0.68); drowsiness is weak (best |AUC-0.5| <= 0.09); paroxysmal has too few positives (10-12).
 5. Headline tiles (PAF, theta/beta, drowsiness, quality) on a report page.

@@ -576,6 +576,19 @@ EC 437 / EO 445 clients, 458 models. Re-run after any feature change (~8 s).
 PAF returns NULL when the 7-13 Hz maximum sits on the window edge -- otherwise
 eyes-open PAFs piled up at 7.1 Hz (theta rising into the window).
 
+**Doctor's-Report labels** (`tools/label_join.py`, tables `labels` +
+`report_pdr`; results in `research/validation_2026/out/SOURCE_DB_LABEL_JOIN.md`).
+Matches reports with `cascade_label_join_2026.find_report`, labels with
+`labels.all_labels`, plus `pdr_slow`: the same rule as `pdr_freq_abnorm` but
+with an **alpha-anchored** frequency (`pdr_hz_alpha`). `labels.parse_pdr_hz`
+(and `dr_report_parser._label_pdr_freq`) take the first "X-Y Hz" range
+anywhere in the background text, which in 42 reports is the "5-7 Hz theta
+range seen in the frontal" sentence -- read as PDR 5 Hz. EC positives 71 -> 15;
+reader vs EDF alpha peak rho 0.37 -> 0.60, median |diff| 0.45 Hz; EDF PAF z
+vs `pdr_slow` AUC 0.16 (i.e. 0.84 inverted). `labels.py` itself is NOT changed,
+so the 2026 validation study's `pdr_freq_abnorm` still carries the bug.
+861 of 1,676 ok studies labelled (448 reports).
+
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
 sort with `'HR' is not in list` -- no panel, on the servers too (those studies
