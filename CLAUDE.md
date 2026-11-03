@@ -564,6 +564,18 @@ pipeline reads it, median Welch over 4 s -- no ICA, no rejection, so it is
 independent of the cascade and of the panel's `10/stdmeas` rescaling. New
 batch runs fill it; `--edf-power` back-fills stored ok studies (~3 s each).
 
+**Reference ranges** (`tools/reference_ranges.py [--pdf]`, tables `ref_models`
++ `ref_z`). Per feature (edf_features, study_features, per-site chan_power) and
+condition (EC/EO): mean = cubic in log(age), SD = linear in log(age) from
+|residual|, after a transform (log for power/ratios, logit for %, none for Hz),
+two passes trimming |z| > 4. Fit on ONE study per client (earliest), ages 3-90;
+every ok study gets z and an age-adjusted percentile (rank among the fit
+residuals, honest on zero-heavy features). A **screening population**, not
+norms: z = 2 means unusual for referred clients that age. First fit 2026-11-03:
+EC 437 / EO 445 clients, 458 models. Re-run after any feature change (~8 s).
+PAF returns NULL when the 7-13 Hz maximum sits on the window edge -- otherwise
+eyes-open PAFs piled up at 7.1 Hz (theta rising into the window).
+
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
 sort with `'HR' is not in list` -- no panel, on the servers too (those studies

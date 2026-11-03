@@ -53,6 +53,10 @@ def _paf(f, p):
     # centre of the peak bin and its two neighbours (0.25 Hz bins)
     k = int(np.argmax(p[m]))
     fm, pm = f[m], p[m]
+    # a maximum on the window edge is theta (or beta) rising into it, not a
+    # peak -- it piled eyes-open PAFs up at 7.1 Hz
+    if k == 0 or k == len(fm) - 1:
+        return float("nan")
     lo, hi = max(k - 1, 0), min(k + 2, len(fm))
     return float(np.sum(fm[lo:hi] * pm[lo:hi]) / np.sum(pm[lo:hi]))
 

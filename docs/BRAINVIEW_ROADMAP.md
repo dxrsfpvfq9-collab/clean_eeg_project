@@ -28,6 +28,7 @@ Tables (`sources.db`):
 - `study_features` — one row per study: artifact %, band shares, posterior alpha %, dominant posterior source Hz (PAF proxy), DMN/SN/ECN %, edge counts
 - `chan_power` — per 10-20 site, straight from the EDF (no ICA): absolute and relative band power, theta/beta, alpha peak, 60 Hz share (`tools/edf_power.py`)
 - `edf_features` — one row per study: theta/beta at Cz/Fz/mean, posterior alpha peak and relative alpha, frontal theta, F4/F3 alpha asymmetry, worst 60 Hz share
+- `ref_models` / `ref_z` — age-by-condition reference models per feature and every study's z + age-adjusted percentile (`tools/reference_ranges.py`)
 - `panel` — the 48 values and z-scores of the study's existing production `.icale.rep.pdf`
 
 ```
@@ -74,6 +75,6 @@ py tools/source_batch.py --features-only  # re-analyse stored sidecars after an 
 
 1. Let the batch finish; check failures (`studies.status='error'`).
 2. ~~Per-channel band power + theta/beta into the batch~~ — done (`--edf-power`, 2026-11-03).
-3. Age/condition reference ranges for `study_features` + per-channel power.
+3. ~~Age/condition reference ranges for `study_features` + per-channel power~~ — done (`tools/reference_ranges.py`, 2026-11-03; plots in `<store>/reference_ranges.pdf`).
 4. Label join and the first "which features predict what" table.
 5. Headline tiles (PAF, theta/beta, drowsiness, quality) on a report page.
