@@ -92,6 +92,11 @@ BA_FUNCTION = {
 }
 
 
+def _ord(p):
+    p = int(round(min(max(p, 1), 99)))
+    return f"{p}{'th' if 10 <= p % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(p % 10, 'th')}"
+
+
 def band_of(hz):
     for name, lo, hi, col in BANDS:
         if lo <= hz < hi:
@@ -230,7 +235,9 @@ def render(base, npz, out):
     return out
 
 
-def page_sources(data, pdf):
+def page_sources(data, pdf, typ=None):
+    """typ: tools/source_norms.typicality() result, or None -- adds the age-peer
+    column, the study's source-make-up percentile and expected-but-absent cells."""
     comps = data["comps"]
     acc = [c for c in comps if c["accept"]]
     rej = [c for c in comps if not c["accept"]]
@@ -310,6 +317,15 @@ def page_sources(data, pdf):
     tx, ty = 0.515, 0.80
     cols = [(0.000, "#"), (0.024, "%"), (0.060, "Band Hz"), (0.135, "Where (peak)"),
             (0.300, "Area · typically involved in")]
+    if typ:
+        cols = cols[:4] + [(0.290, "Age peers"), (0.372, "Area · typically involved in")]
+        ap = typ["atyp_pctile"]
+        verdict = ("UNUSUAL source make-up for age" if ap >= 95 else
+                   "somewhat unusual for age" if ap >= 85 else "typical source make-up for age")
+        fig.text(tx, ty + 0.032, f"vs {typ['n_peers']} age peers ({typ['cond']}): "
+                 f"{_ord(ap)} percentile — {verdict}", fontsize=8.5,
+                 fontweight="bold", color="#c62828" if ap >= 95 else
+                 ("#b26a00" if ap >= 85 else "#2e7d32"))
     for dx, h in cols:
         fig.text(tx + dx, ty, h, fontsize=8.5, fontweight="bold", color="#222")
     fig.lines.append(plt.Line2D([tx, 0.985], [ty - 0.008, ty - 0.008], transform=fig.transFigure,
@@ -336,16 +352,29 @@ def page_sources(data, pdf):
         if len(where) > 27:
             where = where[:26] + "…"
         func = f"BA {c['ba']} · {BA_FUNCTION.get(c['ba'], '')}" if c["ba"] else ""
+        if typ and len(func) > 25:
+            func = func[:24] + "…"
         small = 100 * c["pct"] / tot < MIN_DRAW_PCT
         vals = [str(c["rank"]), f"{100 * c['pct'] / tot:.1f}", f"{bname} {c['hz']:.1f}",
                 where, func]
-        for (dx, _), v in zip(cols, vals):
-            fig.text(tx + dx, y, v, fontsize=fs, color="#888" if small else "#111", va="center")
+        colors = ["#888" if small else "#111"] * 5
+        if typ:
+            ptxt, pcol = typ["per_rank"].get(c["rank"], ("", "#888"))
+            vals = vals[:4] + [ptxt, func]
+            colors = colors[:4] + [pcol if not small else "#999", colors[4]]
+        for (dx, _), v, col_ in zip(cols, vals, colors):
+            fig.text(tx + dx, y, v, fontsize=fs, color=col_, va="center")
         sub = also(c)
         if sub:
             y -= step * 0.62
             fig.text(tx + 0.135, y + step * 0.08, sub, fontsize=fs - 1.2, color="#666", va="center")
         y -= step
+    if typ and typ["absent"]:
+        y -= step * 0.4
+        fig.text(tx, y, "Expected but not found: " + "; ".join(
+            f"{cell} (in {p:.0f}% of peers)" for cell, p in typ["absent"]),
+            fontsize=7.5, color="#b26a00", va="top")
+        y -= step * 0.6
     if rej:
         y -= step * 0.4
         txt = "Removed: " + ", ".join(
@@ -355,6 +384,9 @@ def page_sources(data, pdf):
     # --- footer
     fig.lines.append(plt.Line2D([0.03, 0.97], [0.085, 0.085], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
+    peers_note = ("\nAge peers: each source's lobe x side x band against the 80 QA-corpus clients "
+                  "nearest in age, one study each -- a screening population, not norms; "
+                  "'typical (62%)' = 62% of them have a source like it." if typ else "")
     fig.text(0.03, 0.07,
              "How to read this: sources are estimated from 19 scalp channels by sLORETA, so each "
              "location is approximate (on the order of a centimetre or more) and deep or midline "
@@ -362,7 +394,7 @@ def page_sources(data, pdf):
              "for the Brodmann area, not a finding about this person. Removed components are the "
              "cascade's artifact rejects plus any power-line (59-61 Hz) component.\n"
              "Per-component detail (waveforms, spectrum, full source maps) is in the image cascade "
-             "PDF. Display only: nothing here changes the Brain Panel metrics.",
+             "PDF. Display only: nothing here changes the Brain Panel metrics." + peers_note,
              fontsize=7.2, color="#555", va="top", linespacing=1.45)
 
     pdf.savefig(fig, facecolor="white")

@@ -590,6 +590,24 @@ vs `pdr_slow` AUC 0.16 (i.e. 0.84 inverted). `labels.py` itself is NOT changed,
 so the 2026 validation study's `pdr_freq_abnorm` still carries the bug.
 861 of 1,676 ok studies labelled (448 reports).
 
+**Source typicality** (`tools/source_norms.py`, tables `source_typ` +
+`source_atyp`; results `research/validation_2026/out/SOURCE_TYPICALITY.md`).
+Each accepted component -> a cell (lobe of peak x side x band; 40 cells);
+each study vs its 80 nearest-age clients of the same condition (one study per
+client, own client excluded). Per cell: prevalence among peers, percentile,
+flag rare (>= 2%, < 5% of peers have it) / strong (>= 2%, above every peer) /
+absent (< 0.5%, >= 90% have it). Study verdict = share-weighted surprise
+score ranked leave-one-out against the peers (`atyp_pctile`; >= 95 unusual,
+6% of studies). Two calibration lessons: a 95th-percentile per-cell line over
+40 cells flagged 82% of studies; an UNWEIGHTED surprise sum called a study
+typical whose two largest sources (58%) were above every peer. The source
+page (`page_sources(..., typ)`, used by `edf_report`) gets an "Age peers"
+column, the verdict line and expected-but-absent cells. **Against the doctor's
+comments the verdict carries no signal** (clinical abnormality AUC 0.49/0.55,
+drowsiness ~0.5); the one coherent lead is reader-confirmed PDR slowing, with
+less right-parietal alpha source (cell AUC 0.28) and more right parietal /
+temporal theta (0.63-0.64) -- 14 positives.
+
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
 sort with `'HR' is not in list` -- no panel, on the servers too (those studies
@@ -617,6 +635,28 @@ eye-movement caveat). Pages 2-3: `source_summary`'s source + network pages
 when `<edf>.sources.npz` (or `--sidecar`) exists. The footer states the
 reference is a screening population, not norms. For an EDF inside the Dropbox
 QA corpus the PDF goes to `<store>\pdf\<id>.edfreport.pdf`, never next to it.
+
+**Brain Panel cross-check page** (page 2 when a production `.icale.rep.pdf`
+sits next to the EDF, or `--panel`). Read with `panel_parser`, nothing
+recomputed. Out-of-range rows by group; four panel-row / EDF-feature pairs with
+an agreement reading (both high/low, "(one) borderline" when the other leans
+the same way at |z| >= 1.5, panel only, EDF only, CONFLICT); a note that the
+panel is adult/EC-referenced when a child or EO study is flagged by the panel
+only; the six discriminant likelihoods with their QA-corpus AUC.
+
+**Panel vs EDF vs sources** (`tools/panel_crosscheck.py` ->
+`research/validation_2026/out/PANEL_CROSSCHECK.md`; 481 studies, EC 334 / EO
+147). Overlap: EDF PAF ~ panel Alpha Peak rho 0.74 (same Hz, median diff 0.0),
+cascade dominant posterior Hz ~ Alpha Peak 0.67, posterior relative alpha ~
+PDR Burst Width 0.55, theta/beta ~ Alpha Speed -0.37..-0.44; F4/F3 asymmetry
+and the network shares have no panel counterpart (|rho| <= 0.2). Against the
+doctor (10x5-fold, grouped by client): PDR slowing 0.76 panel / 0.75 EDF /
+0.70 sources, drowsiness best 0.62 (panel + EDF), clinical abnormality ~0.55
+from everything, paroxysmal noise (11 positives). **The published discriminants
+applied as-is: 0.55 / 0.53 / 0.43 / 0.33** (clinical, PDR, drowsiness,
+paroxysmal) -- printed on the page beside each likelihood. With 17-21
+positives the single EDF alpha-peak z (AUC 0.84 for PDR slowing, EC) beats
+every fitted multivariate model.
 
 ## Production reference
 

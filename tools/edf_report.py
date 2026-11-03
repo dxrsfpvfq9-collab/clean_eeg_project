@@ -107,6 +107,14 @@ def edf_start(path):
         return None
 
 
+def patient_hash(path):
+    """Same client key as source_batch (hash of the EDF patient field), so the
+    study's own client is left out of its peers. The field itself is not kept."""
+    import hashlib
+    with open(path, "rb") as fh:
+        return hashlib.sha1(fh.read(88)[8:88].strip()).hexdigest()[:12]
+
+
 def load_models(store, cond):
     con = sqlite3.connect(os.path.join(store, "sources.db"))
     out = {}
@@ -295,6 +303,175 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
     plt.close(fig)
 
 
+# ------------------------------------------------------------------ page 2: Brain Panel
+# (panel row, sign, EDF feature, title, panel-row label). sign = how the panel
+# row moves when the EDF feature rises; pairs and rho from
+# tools/panel_crosscheck.py (eyes-closed, n=334).
+PANEL_PAIRS = [
+    (15, +1, "paf_post", "Alpha peak frequency", "Alpha Peak (rho 0.74)"),
+    (10, +1, "rel_alpha_post", "Posterior alpha", "PDR Burst Width (rho 0.55)"),
+    (14, -1, "tbr_cz", "Theta/beta", "Alpha Speed (rho -0.37)"),
+    (30, +1, "rel_theta_front", "Frontal theta", "Diffuse Theta (rho 0.39)"),
+]
+# What the published discriminants did against the doctor's labels in the QA
+# corpus (tools/panel_crosscheck.py, applied as published, no fitting).
+DISC_QA_AUC = {"Clinical Abnormality": 0.55, "PDR frequency": 0.53, "Drowsiness": 0.43,
+               "Paroxysmal": 0.33}
+
+
+def find_panel(edf, explicit=None):
+    for p in ([explicit] if explicit else []) + [edf[:-4] + ".icale.rep.pdf"]:
+        if p and os.path.exists(p):
+            sys.path.insert(0, os.path.join(ROOT, "research", "validation_2026"))
+            from panel_parser import parse_panel_pdf, NAME_STRINGS
+            r = parse_panel_pdf(p)
+            if r.get("valid"):
+                return dict(values=r["values"], z=r["zscores"], names=NAME_STRINGS,
+                            version=r.get("version"), date=r.get("report_date"))
+    return None
+
+
+def _agree(zp, ze, sign):
+    """Agreement wording for one panel row vs its EDF counterpart."""
+    if zp is None or ze is None or not np.isfinite(zp) or not np.isfinite(ze):
+        return "n/a", "#9e9e9e"
+    fp, fe = abs(zp) >= Z_FLAG, abs(ze) >= Z_FLAG
+    dp, de = np.sign(zp) * sign, np.sign(ze)
+    if fp and fe:
+        if dp == de:
+            return "both " + ("high" if de > 0 else "low"), "#c62828"
+        return "CONFLICT", "#6a1b9a"
+    if not fp and not fe:
+        return "both typical", "#2e7d32"
+    # one flagged, the other leaning the same way (|z| >= 1.5): agreement, not a split
+    other, who = (ze, "EDF") if fp else (zp, "panel")
+    d_flag = dp if fp else de
+    d_other = de if fp else dp
+    if abs(other) >= 1.5 and d_flag == d_other:
+        return f"both {'high' if d_flag > 0 else 'low'} ({who} borderline)", "#c62828"
+    return ("panel only", "#b26a00") if fp else ("EDF only", "#b26a00")
+
+
+def page_panel(pdf, label, age, cond, panel, cp, models):
+    import matplotlib.pyplot as plt
+    from process.discriminant import compute_oob_counts, compute_scores, GROUP_INDEXES
+    sm = edf_power.summary(cp)
+    z = np.array([np.nan if v is None else v for v in panel["z"]], float)
+    vals = panel["values"]
+    std_bad = vals[1] is not None and abs(vals[1] - 1000) < 1e-6
+    if std_bad:
+        z[1] = np.nan
+    fig = plt.figure(figsize=(8.5, 11))
+    fig.text(0.06, 0.965, "Brain Panel cross-check", fontsize=16, weight="bold")
+    fig.text(0.06, 0.945, label, fontsize=9)
+    fig.text(0.06, 0.930, f"Production Brain Panel {panel.get('version') or ''}"
+             f"{', dated ' + panel['date'] if panel.get('date') else ''}", fontsize=8.5)
+    fig.text(0.06, 0.916, "48 metrics as z against EC_191 -- an eyes-closed reference, not "
+             "age-adjusted", fontsize=8, color="0.35")
+
+    # --- out-of-range rows by group
+    groups = [("std_global", "Std/Global"), ("pdr", "PDR"), ("phenotypes", "Phenotypes"),
+              ("focal", "Focal"), ("diffuse", "Diffuse"), ("state_shift", "State shift")]
+    y = 0.895
+    fig.text(0.06, y, "Out-of-range panel rows (|z| >= 2)", fontsize=10, weight="bold")
+    y -= 0.024
+    total = 0
+    for g, title in groups:
+        idx = GROUP_INDEXES[g]
+        hit = [i for i in idx if np.isfinite(z[i]) and abs(z[i]) >= Z_FLAG]
+        total += len(hit)
+        txt = ", ".join(f"{panel['names'][i]} {z[i]:+.1f}" for i in
+                        sorted(hit, key=lambda i: -abs(z[i]))) or "none"
+        lines = _wrap(txt, 95).split("\n")
+        fig.text(0.07, y, f"{title} ({len(hit)}/{len(idx)})", fontsize=8, weight="bold")
+        for ln in lines:
+            fig.text(0.22, y, ln, fontsize=7.5, color="#c62828" if hit else "0.35")
+            y -= 0.015
+        y -= 0.004
+    fig.text(0.07, y, f"Total out of range: {total} of 48"
+             + ("   (Global STD = 1000: pre-fix panel, row ignored)" if std_bad else ""),
+             fontsize=8, color="0.2")
+    y -= 0.04
+
+    # --- agreement with the EDF analysis
+    fig.text(0.06, y, "Does the panel agree with the EDF analysis?", fontsize=10, weight="bold")
+    y -= 0.024
+    for x, h in [(0.07, "Measure"), (0.27, "Panel row"), (0.52, "Panel"),
+                 (0.62, "EDF (for age)"), (0.78, "Reading")]:
+        fig.text(x, y, h, fontsize=8, weight="bold")
+    y -= 0.018
+    readings = []
+    for row, sign, feat, title, prow in PANEL_PAIRS:
+        zp = float(z[row]) if np.isfinite(z[row]) else None
+        ze = score(models, feat, age, sm.get(feat))[0]
+        word, col = _agree(zp, ze, sign)
+        fig.text(0.07, y, title, fontsize=8)
+        fig.text(0.27, y, prow, fontsize=7.5, color="0.3")
+        fig.text(0.52, y, f"z {zp:+.1f}" if zp is not None else "n/a", fontsize=8)
+        fig.text(0.62, y, f"z {ze:+.1f}" if ze is not None else "n/a", fontsize=8)
+        fig.text(0.78, y, word, fontsize=8, weight="bold", color=col)
+        if feat == "paf_post" and vals[row] is not None and sm.get(feat) is not None:
+            y -= 0.014
+            fig.text(0.27, y, f"panel {vals[row]:.1f} Hz, EDF {sm[feat]:.1f} Hz", fontsize=6.5,
+                     color="0.4")
+        readings.append((title, word))
+        y -= 0.02
+    notes = []
+    young = age is not None and age < 18
+    for title, word in readings:
+        if word == "panel only" and young:
+            notes.append(f"{title}: flagged by the panel only. The panel compares with an adult "
+                         "reference; at this age the EDF's age-adjusted value is the better guide.")
+        elif word == "panel only":
+            notes.append(f"{title}: flagged by the panel only -- the panel row and the EDF measure "
+                         "overlap only partly; read the panel row on its own terms.")
+        elif word == "EDF only":
+            notes.append(f"{title}: unusual for age in the EDF but not on the panel.")
+        elif word.startswith(("both high", "both low")):
+            notes.append(f"{title}: both analyses point {word.split()[1]} "
+                         f"{'(one borderline) ' if 'borderline' in word else ''}"
+                         "-- two independent computations agree.")
+        elif word == "CONFLICT":
+            notes.append(f"{title}: the two disagree in direction -- check recording quality and "
+                         "condition before relying on either.")
+    if cond == "EO":
+        notes.append("Eyes-open study: EC_191 is an eyes-closed reference, so the panel's PDR and "
+                     "alpha rows are expected to read low.")
+    y -= 0.006
+    for n_ in notes:
+        for k, ln in enumerate(_wrap(n_, 118).split("\n")):
+            fig.text(0.07 if k == 0 else 0.082, y, ("\u2022 " if k == 0 else "") + ln, fontsize=7.5)
+            y -= 0.015
+    y -= 0.03
+
+    # --- discriminant likelihoods
+    fig.text(0.06, y, "Panel discriminant likelihoods (Collura et al. 2026)", fontsize=10,
+             weight="bold")
+    y -= 0.024
+    for d in compute_scores(compute_oob_counts(np.nan_to_num(z, nan=0.0))):
+        fig.text(0.07, y, d["name"], fontsize=8)
+        fig.text(0.30, y, f"score {d['score']}", fontsize=8)
+        fig.text(0.40, y, d["label"], fontsize=8, weight="bold", color=d["color"])
+        qa = DISC_QA_AUC.get(d["name"])
+        if qa is not None:
+            fig.text(0.62, y, f"QA corpus AUC vs doctor: {qa:.2f}", fontsize=7, color="0.4")
+        y -= 0.017
+    for k, ln in enumerate(_wrap(
+            "Published sensitivities/specificities come from the paper's cohort. Applied unchanged "
+            "to the STS QA corpus (tools/panel_crosscheck.py), the discriminant scores did not track "
+            "the matched doctor's comments (AUC 0.33-0.55, 0.5 = chance); a model of the 48 panel "
+            "rows fitted to those comments reached 0.76 for PDR slowing and 0.58 for drowsiness. "
+            "Read the likelihoods as pattern summaries, not diagnostic probabilities.", 140).split("\n")):
+        fig.text(0.07, y - 0.006 - 0.012 * k, ln, fontsize=6.8, color="0.35")
+    fig.text(0.06, 0.035, _wrap(
+        "Panel values are read from the production .icale.rep.pdf; nothing is recomputed. EDF values "
+        "are age-by-condition z from the QA-corpus reference (a screening population, not norms). "
+        "Screening information for a qualified practitioner; not a diagnosis.", 150),
+        fontsize=6, color="0.35", va="bottom")
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def _wrap(s, n):
     import textwrap
     return "\n".join(textwrap.wrap(s, n))
@@ -315,6 +492,7 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--sidecar")
     ap.add_argument("--store", default=DEFAULT_STORE)
+    ap.add_argument("--panel", help="production .icale.rep.pdf (default: next to the EDF)")
     a = ap.parse_args()
 
     base = os.path.basename(a.edf)[:-4]
@@ -352,10 +530,22 @@ def main():
     sidecar = a.sidecar or (a.edf[:-4] + ".sources.npz")
     with PdfPages(out) as pdf:
         page_edf(pdf, deidentify_label(base), age, cond, rec, cp, models, notes)
+        panel = find_panel(a.edf, a.panel)
+        if panel:
+            page_panel(pdf, deidentify_label(base), age, cond, panel, cp, models)
+        else:
+            print("no Brain Panel found -- cross-check page skipped")
         if os.path.exists(sidecar):
             import source_summary as ss
             data = ss.load(sidecar)
-            ss.page_sources(data, pdf)
+            typ = None
+            try:
+                import source_norms
+                typ = source_norms.typicality(data["comps"], age, cond, a.store,
+                                              client=patient_hash(a.edf))
+            except Exception as exc:      # no database / no reference: page without peers
+                print("source typicality unavailable:", exc)
+            ss.page_sources(data, pdf, typ)
             if data["sources"] is not None:
                 ss.page_networks(data, pdf)
     print("wrote", out)
