@@ -46,6 +46,7 @@ from files.deidentify import deidentify_label      # noqa: E402
 DEFAULT_STORE = r"C:\BrainPanel\source_db"
 CORPUS = r"C:\Users\tcollura\Dropbox\STS EEG Quality Assurance Reviews"
 Z_FLAG = 2.0
+LINE_BAD = 50.0       # % of 1-80 Hz power at the worst site
 MAP_BANDS = [("rel_delta", "Delta 1-4 Hz"), ("rel_theta", "Theta 4-8 Hz"),
              ("rel_alpha", "Alpha 8-13 Hz"), ("rel_beta", "Beta 13-21 Hz")]
 
@@ -136,16 +137,22 @@ def quality(cp, n_labels):
     line = max((cp[s]["line60"] for s in cp if np.isfinite(cp[s]["line60"])), default=np.nan)
     missing = [s for s in TOPO_SITES if s not in cp]
     hib = np.nanmean([cp[s]["rel_hibeta"] + cp[s]["rel_gamma"] for s in cp]) if cp else np.nan
-    problems = []
+    problems, info = [], []
     if missing:
         problems.append(f"{len(missing)} site(s) missing or flat ({', '.join(missing[:6])})")
-    if np.isfinite(line) and line > 5:
-        problems.append(f"60 Hz line noise up to {line:.0f}% of 1-80 Hz power")
     if np.isfinite(hib) and hib > 15:
         problems.append(f"21-45 Hz activity {hib:.0f}% (muscle?)")
+    # Mains sits outside the 1-45 Hz every measure uses, and is present in most
+    # raw QA recordings, so it only counts when it swamps the EEG (> 50% of
+    # 1-80 Hz power at the worst site: suspect electrode contact).
+    if np.isfinite(line) and line > LINE_BAD:
+        problems.append(f"60 Hz line noise {line:.0f}% of 1-80 Hz power (electrode contact?)")
+    elif np.isfinite(line) and line > 5:
+        info.append(f"60 Hz line noise up to {line:.0f}% (outside the 1-45 Hz measures)")
     grade = "Good" if not problems else ("Fair" if len(problems) == 1 else "Poor")
     col = {"Good": "#2e7d32", "Fair": "#b26a00", "Poor": "#c62828"}[grade]
-    return grade, col, "; ".join(problems) or "all 19 sites present, low line noise, low fast activity"
+    detail = "; ".join(problems + info) or "all 19 sites present, low line noise, low fast activity"
+    return grade, col, detail
 
 
 # ------------------------------------------------------------------ page 1

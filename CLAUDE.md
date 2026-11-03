@@ -43,7 +43,7 @@ Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
 py -m pytest -v
 ```
 
-14 tests in `tests/unit/` — smoke tests, tfcfilter sanity checks and the
+15 tests in `tests/unit/` — smoke tests, tfcfilter sanity checks and the
 de-identification rules. ~1s runtime.
 
 ## Sample EDFs
@@ -608,7 +608,7 @@ the `ref_models` in the source database for the client's age and condition
 (both from the file name, or `--age`/`--cond`; no condition -> EC reference with
 a note). Seven tiles: posterior alpha peak, theta/beta at Cz, posterior relative
 alpha, frontal theta, F4/F3 alpha asymmetry, 21-30 Hz, and a quality grade
-(missing/flat sites, 60 Hz > 5%, 21-45 Hz > 15%). Each tile: value, z,
+(missing/flat sites, 21-45 Hz > 15%, 60 Hz > 50% -- below that mains is noted only, it is outside every 1-45 Hz measure). Each tile: value, z,
 age-adjusted percentile, the 2-SD range for that age. Head maps: per-site z of
 relative delta/theta/alpha/beta (mne topomap, +/-3). Findings: every tile at
 |z| >= 2 in plain language with what the label join found the feature tracks,
@@ -637,7 +637,10 @@ run `c:\users\tcollura\appdata\local\programs\python\python312\python`.
 `files/deidentify.py`: `deidentify_label` for the cascade title,
 `panel_label` for the panel's "Name:" line on all three pages — the whole
 base name is masked, then the 30-character tail kept so page 1 still fits
-before Date. Any purely alphabetic word not in `KNOWN_TERMS` becomes `#`; a
+before Date. Any purely alphabetic word not in `KNOWN_TERMS` becomes `#`, and
+so does any 3+ letter run inside a word with digits (a name glued to a year or
+case number used to pass whole; fixed in dev 2026-11-03, NOT yet on the
+servers, whose staged copy still leaks it); a
 new technical term in file names needs adding there or it gets masked. The
 watchdog log still carries full paths (`SHORT NAME:`, file names) — it stays
 on the server. Cite studies in docs and commits by neutral label (`QA study

@@ -14,7 +14,10 @@ Rules (HIPAA Safe Harbor, applied to what a file name can carry):
     each of its letters replaced by '#'. Unknown words are masked by default:
     a missed technical term costs readability, a missed name costs privacy.
   * Words containing digits (case numbers, session codes, "raw_130399") are
-    kept -- they are codes, not names.
+    kept -- they are codes, not names -- EXCEPT any run of 3+ letters inside
+    them that is not in KNOWN_TERMS: a name glued to a year or case number
+    ("Jordan2017", "12Jordan") used to pass whole. Runs of 1-2 letters stay
+    ("19ch", "5C0005", "v2").
   * An age over 89 ("AGE 92") becomes "90+", as Safe Harbor requires.
 
 Display only: nothing here feeds a metric, a file name, or a path.
@@ -54,6 +57,12 @@ KNOWN_TERMS = {
 
 _SPLIT = re.compile(r"([\s_\-]+)")
 _ALPHA = re.compile(r"^[A-Za-z][A-Za-z.'’]*$")
+_LETTERS = re.compile(r"[A-Za-z]{3,}")
+
+
+def _mask_runs(word):
+    return _LETTERS.sub(lambda m: m.group(0) if m.group(0).upper() in KNOWN_TERMS
+                        else "#" * len(m.group(0)), word)
 
 
 def deidentify_label(name):
@@ -75,6 +84,8 @@ def deidentify_label(name):
                             else "#" * len(p) for p in word.split(".")) + tail
         elif prev_word == "AGE" and word.isdigit() and int(word) > 89:
             part = "90+" + tail
+        else:
+            part = _mask_runs(word) + tail
         out.append(part)
         prev_word = word.upper()
     return "".join(out)

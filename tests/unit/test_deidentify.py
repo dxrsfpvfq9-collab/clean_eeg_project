@@ -23,6 +23,13 @@ def test_dotted_and_hyphenated_names():
     assert d("9996-Morgan EO") == "9996-###### EO"
 
 
+def test_name_glued_to_digits_masked():
+    assert d("9999 Jordan2017 01.000.03 AGE 7 EC") == "9999 ######2017 01.000.03 AGE 7 EC"
+    assert d("12Jordan D EO") == "12###### # EO"
+    assert d("5C0005 19ch EC2") == "5C0005 19ch EC2"     # short runs and known terms stay
+    assert d("19chFZCR") == "19######"                   # an unknown 3+ run is masked
+
+
 def test_age_over_89_generalised():
     assert d("9997 Robin K AGE 93 EO") == "9997 ##### # AGE 90+ EO"
     assert d("9997 Robin K AGE 89 EO") == "9997 ##### # AGE 89 EO"
