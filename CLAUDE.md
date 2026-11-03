@@ -32,6 +32,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py tools/epoch_reject_report.py "<edf-or-folder>"` | **Report only.** Prints which 10 s epochs an "any bad channel rejects the epoch" rule would drop. Changes nothing. See "Epoch screening" below. |
 | `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
 | `py tools/source_summary.py "<edf>"` | **Prototype.** One-page source summary of a cascade → `<edf>.sources.pdf`. Needs the `.sources.npz` sidecar. See "Source summary" below. |
+| `py tools/edf_report.py "<edf>" [--age N] [--cond EC\|EO]` | **Prototype.** EDF Analysis Report: age-adjusted headline tiles, head maps, findings (+ source pages if a `.sources.npz` exists) → `<edf>.edfreport.pdf`. See "EDF Analysis Report" below. |
 | `py tools/source_batch.py [--pdf]` | Builds the **source database** over the QA corpus, newest first, resumable. Sidecar-only ICA pass per study (~25 s, no windows), store `C:\BrainPanel\source_db`. See "Source database" below and `docs/BRAINVIEW_ROADMAP.md`. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
@@ -599,6 +600,23 @@ values and z identical, and no successful batch study logged a drop. Match
 like the loop does (substring, upper-cased): an exact-match first version
 dropped `Fz`/`Cz`/`Pz` and broke 3 studies until it was corrected. Dev only;
 the servers' deploy set does not have it.
+
+## EDF Analysis Report (prototype, `tools/edf_report.py`)
+
+Page 1 from the EDF alone (`edf_power`, no ICA, a few seconds), scored against
+the `ref_models` in the source database for the client's age and condition
+(both from the file name, or `--age`/`--cond`; no condition -> EC reference with
+a note). Seven tiles: posterior alpha peak, theta/beta at Cz, posterior relative
+alpha, frontal theta, F4/F3 alpha asymmetry, 21-30 Hz, and a quality grade
+(missing/flat sites, 60 Hz > 5%, 21-45 Hz > 15%). Each tile: value, z,
+age-adjusted percentile, the 2-SD range for that age. Head maps: per-site z of
+relative delta/theta/alpha/beta (mne topomap, +/-3). Findings: every tile at
+|z| >= 2 in plain language with what the label join found the feature tracks,
+plus any band at |z| >= 2 on >= 4 sites (frontal-only high delta gets an
+eye-movement caveat). Pages 2-3: `source_summary`'s source + network pages
+when `<edf>.sources.npz` (or `--sidecar`) exists. The footer states the
+reference is a screening population, not norms. For an EDF inside the Dropbox
+QA corpus the PDF goes to `<store>\pdf\<id>.edfreport.pdf`, never next to it.
 
 ## Production reference
 
