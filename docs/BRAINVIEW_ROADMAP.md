@@ -26,6 +26,8 @@ Tables (`sources.db`):
 - `edges` — partial envelope coupling per band, every pair, with the study's surrogate threshold (option 2)
 - `groups` — coupled groups per band with their network template match
 - `study_features` — one row per study: artifact %, band shares, posterior alpha %, dominant posterior source Hz (PAF proxy), DMN/SN/ECN %, edge counts
+- `chan_power` — per 10-20 site, straight from the EDF (no ICA): absolute and relative band power, theta/beta, alpha peak, 60 Hz share (`tools/edf_power.py`)
+- `edf_features` — one row per study: theta/beta at Cz/Fz/mean, posterior alpha peak and relative alpha, frontal theta, F4/F3 alpha asymmetry, worst 60 Hz share
 - `panel` — the 48 values and z-scores of the study's existing production `.icale.rep.pdf`
 
 ```
@@ -59,8 +61,8 @@ py tools/source_batch.py --features-only  # re-analyse stored sidecars after an 
 | Age-regressed normative z-scores (ages 4–85) | Panel: EC_191 (not age-regressed); age models for the 48 rows already fitted (`EC_AGE`/`EO_AGE`, n=491, `age_regression.py`) | Wire the age models into a panel variant; fit the same models on `study_features` |
 | eLORETA 3-D source maps | Cascade brain pages; one-page source summary | Reference ranges per region (§2.1) so a map can say "unusually strong for age" |
 | Peak alpha frequency tile | EDF-based PAF (`compare_studies.eceo`), cascade dominant posterior source | Age norms for PAF from the database; headline tile |
-| Theta/beta ratio tile | not computed | Add per-channel band power from the EDF to the batch (cheap) |
-| Topographic z-maps | not available (EC_191 is per-file) | Per-channel band-power table in the batch → per-channel age norms → head maps |
+| Theta/beta ratio tile | `edf_features.tbr_cz` / per site in `chan_power` | Age norms, headline tile |
+| Topographic z-maps | per-site band power in `chan_power` | Per-site age norms → head maps |
 | Network / connectivity view | Page 2 prototype (envelope coupling, DMN/SN/ECN templates) | Reference ranges; replace hand-placed nodes with the Yeo 7-network atlas; consider lagged phase synchrony |
 | Longitudinal / drug-response tracking | `compare_studies.py prepost` | Auto-pair sessions by `client`; thresholds from test-retest (§2.4) |
 | EC/EO reactivity | `compare_studies.py eceo` (validated on 147 pairs) | Age norms for attenuation from the database |
@@ -71,7 +73,7 @@ py tools/source_batch.py --features-only  # re-analyse stored sidecars after an 
 ## 4. Order of work
 
 1. Let the batch finish; check failures (`studies.status='error'`).
-2. Per-channel band power + theta/beta into the batch; re-run with `--features-only`, which needs no new ICA. The EDF readout is fast.
+2. ~~Per-channel band power + theta/beta into the batch~~ — done (`--edf-power`, 2026-11-03).
 3. Age/condition reference ranges for `study_features` + per-channel power.
 4. Label join and the first "which features predict what" table.
 5. Headline tiles (PAF, theta/beta, drowsiness, quality) on a report page.

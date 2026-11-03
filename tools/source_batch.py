@@ -46,6 +46,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "research", "validation_2026"))
 
+import edf_power                                  # noqa: E402
 import source_summary as ss                       # noqa: E402
 from files.deidentify import deidentify_label     # noqa: E402
 
@@ -80,6 +81,15 @@ CREATE TABLE IF NOT EXISTS study_features (
   dmn_pct REAL, sn_pct REAL, ecn_pct REAL,
   n_edges_theta INTEGER, n_edges_alpha INTEGER, n_edges_beta INTEGER,
   dmn_groups INTEGER, sn_groups INTEGER, ecn_groups INTEGER, feat_json TEXT);
+CREATE TABLE IF NOT EXISTS chan_power (
+  study_id TEXT, site TEXT, total REAL,
+  abs_delta REAL, abs_theta REAL, abs_alpha REAL, abs_beta REAL, abs_hibeta REAL, abs_gamma REAL,
+  rel_delta REAL, rel_theta REAL, rel_alpha REAL, rel_beta REAL, rel_hibeta REAL, rel_gamma REAL,
+  tbr REAL, paf REAL, line60 REAL, PRIMARY KEY (study_id, site));
+CREATE TABLE IF NOT EXISTS edf_features (
+  study_id TEXT PRIMARY KEY, n_sites INTEGER, tbr_cz REAL, tbr_fz REAL, tbr_mean REAL,
+  paf_post REAL, rel_alpha_post REAL, rel_theta_front REAL, rel_delta_mean REAL,
+  rel_hibeta_mean REAL, alpha_asym_f4f3 REAL, line60_max REAL);
 CREATE TABLE IF NOT EXISTS panel (
   study_id TEXT, row INTEGER, name TEXT, value REAL, z REAL, version TEXT, report_date TEXT,
   PRIMARY KEY (study_id, row));
@@ -261,6 +271,24 @@ def extract(con, sid, npz, pdf_out=None):
     return feats
 
 
+CP_COLS = ["total"] + [k + b[0] for k in ("abs_", "rel_") for b in edf_power.BANDS] +     ["tbr", "paf", "line60"]
+
+
+def load_edf_power(con, sid, edf_path):
+    """Electrode-space band power per site + study headline numbers (no ICA)."""
+    cp = edf_power.chan_power(edf_path)
+    con.execute("DELETE FROM chan_power WHERE study_id=?", (sid,))
+    con.execute("DELETE FROM edf_features WHERE study_id=?", (sid,))
+    nan = lambda v: None if v is None or not np.isfinite(v) else float(v)     # noqa: E731
+    for site, row in cp.items():
+        con.execute("INSERT INTO chan_power VALUES (" + ",".join("?" * (2 + len(CP_COLS))) + ")",
+                    (sid, site, *[nan(row[c]) for c in CP_COLS]))
+    sm = edf_power.summary(cp)
+    con.execute("INSERT INTO edf_features VALUES (" + ",".join("?" * (1 + len(sm))) + ")",
+                (sid, *[nan(v) if isinstance(v, float) else v for v in sm.values()]))
+    return sm
+
+
 def load_panel(con, sid, edf_path):
     pdfp = edf_path[:-4] + ".icale.rep.pdf"
     if not os.path.exists(pdfp):
@@ -291,6 +319,8 @@ def main():
                     help="re-check stored ok studies for flat / too-short recordings")
     ap.add_argument("--errors-only", action="store_true",
                     help="retry only studies whose last run failed (safe beside a running batch)")
+    ap.add_argument("--edf-power", action="store_true",
+                    help="add per-site EDF band power to stored ok studies (no ICA)")
     ap.add_argument("--features-only", action="store_true",
                     help="re-extract features from existing sidecars (after an analysis change)")
     a = ap.parse_args()
@@ -321,6 +351,23 @@ def main():
         con.commit()
         print(f"{n_bad} stored studies re-marked unusable")
         return
+    if a.edf_power:            # electrode-space power for stored ok studies (no ICA, ~3 s each)
+        have = {r[0] for r in con.execute("SELECT study_id FROM edf_features")}
+        ok = {r[0] for r in con.execute("SELECT id FROM studies WHERE status='ok'")}
+        todo = [s for s in studies if s["id"] in ok and (a.redo or s["id"] not in have)]
+        if a.limit:
+            todo = todo[:a.limit]
+        print(f"{len(todo)} studies to add EDF power")
+        for k, s in enumerate(todo, 1):
+            try:
+                sm = load_edf_power(con, s["id"], s["path"])
+                msg = (f"sites {sm['n_sites']}  tbr_cz {sm['tbr_cz'] or float('nan'):.2f}  "
+                       f"paf {sm['paf_post'] or float('nan'):.2f}")
+            except Exception as exc:
+                msg = f"EDF power failed: {type(exc).__name__}: {exc}"[:160]
+            con.commit()
+            print(f"[{k}/{len(todo)}] {s['id']} {msg}", flush=True)
+        return
     if a.features_only:
         todo = [s for s in todo if os.path.exists(os.path.join(a.store, "npz", s["id"] + ".sources.npz"))]
     if a.limit:
@@ -346,6 +393,7 @@ def main():
             pdf_out = os.path.join(a.store, "pdf", s["id"] + ".sources.pdf") if a.pdf else None
             feats = extract(con, s["id"], npz, pdf_out)
             has_panel = load_panel(con, s["id"], s["path"])
+            load_edf_power(con, s["id"], s["path"])
             msg = (f"alpha {feats['alpha_pct']:.0f}%  artifact {feats['artifact_pct']:.0f}%  "
                    f"panel {'yes' if has_panel else 'no'}")
         except Unusable as exc:

@@ -556,6 +556,14 @@ a running batch), `unusable` (`check_usable`: more than half the channels flat,
 SD < 0.01 uV, or under 30 s -- the pipeline "succeeds" on all-constant HR-channel
 exports and stores garbage; `--check-unusable` re-checks stored studies).
 
+**Electrode-space power** (`tools/edf_power.py`, tables `chan_power` +
+`edf_features`). Per 10-20 site: absolute (uV^2) and relative (% of 1-45 Hz)
+delta/theta/alpha/beta(13-21)/hibeta/gamma, theta/beta, alpha peak (7-13 Hz max
+>= 1.5x flanks, else NULL), 58-62 Hz share. Straight from the EDF, read as the
+pipeline reads it, median Welch over 4 s -- no ICA, no rejection, so it is
+independent of the cascade and of the panel's `10/stdmeas` rescaling. New
+batch runs fill it; `--edf-power` back-fills stored ok studies (~3 s each).
+
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
 sort with `'HR' is not in list` -- no panel, on the servers too (those studies
