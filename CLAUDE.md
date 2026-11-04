@@ -33,6 +33,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
 | `py tools/source_summary.py "<edf>"` | **Prototype.** One-page source summary of a cascade → `<edf>.sources.pdf`. Needs the `.sources.npz` sidecar. See "Source summary" below. |
 | `py tools/edf_report.py "<edf>" [--age N] [--cond EC\|EO]` | **Prototype.** EDF Analysis Report: age-adjusted headline tiles, head maps, findings (+ source pages if a `.sources.npz` exists) → `<edf>.edfreport.pdf`. See "EDF Analysis Report" below. |
+| `py tools/coupling_norms.py` | Rebuilds the age norms for source coupling (tables + `COUPLING_NORMS.md`), about 1 min. See "Coupling norms" below. |
 | `py tools/source_batch.py [--pdf]` | Builds the **source database** over the QA corpus, newest first, resumable. Sidecar-only ICA pass per study (~25 s, no windows), store `C:\BrainPanel\source_db`. See "Source database" below and `docs/BRAINVIEW_ROADMAP.md`. |
 
 Output PDF lands next to the source EDF as `<name>.icale.rep.pdf`.
@@ -615,6 +616,23 @@ flagged sources on the map, the verdict line and expected-but-absent cells.
 ~0.5, paroxysmal 0.40/0.60 (9-11 positives); reader-confirmed PDR slowing EC 0.67
 (CI 0.52-0.79; unusual % 0.71), EO 0.56 -- 14 positives each, with less
 right-parietal alpha source (cell AUC 0.37).
+
+**Coupling norms** (`tools/coupling_norms.py`, tables `coupling_typ` +
+`coupling_links`; results `research/validation_2026/out/COUPLING_NORMS.md`). The
+network page's amplitude-envelope coupling against age. Raw r is not comparable
+between recordings: r and the family-wise threshold both move with component count
+and length (rho with pairs -0.23..-0.54). r/thr made it worse (-0.6), so **band
+strength** = log RMS(r), regressed on age + log(pairs) + log(thr) (rho then ~0), per
+band and condition, ranked. **Link** = |r| >= thr; each pair -> region x region x
+band (165 types), logistic chance of a link in that direction by age + log(pairs);
+*uncommon* = under 1%. No per-link z: links are selected for being extreme.
+Out-of-client (5 folds); `coupling_typicality()` refits without the client on each
+report. **Caveats:** strength z SD is 1.2-1.3 (heavy tails), so read the percentile,
+not z; about 9% of studies are >= 95th and 11% <= 5th in at least one of 3 bands; 33%
+EC / 21% EO have an uncommon link. **Against the doctor's comments nothing dependable**:
+clinical abnormality 0.42-0.57, drowsiness 0.44-0.53, uncommon links 0.43-0.56; the
+stray results (paroxysmal EC theta 0.24, PDR slow EC beta 0.31 and EO theta 0.69) rest
+on 9-14 positives across 24 tests and do not agree between conditions.
 
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage

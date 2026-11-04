@@ -32,6 +32,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from matplotlib.textpath import TextPath
 from matplotlib.patches import Rectangle
 from matplotlib.colors import to_rgb
 from matplotlib.backends.backend_pdf import PdfPages
@@ -90,6 +91,40 @@ BA_FUNCTION = {
     44: "speech production", 45: "speech production",
     46: "attention, working memory", 47: "language, response inhibition",
 }
+
+
+def _width(s, fs):
+    """Width of a string as a fraction of the A4 landscape page."""
+    return TextPath((0, 0), s, size=fs).get_extents().width / (11.69 * 72) if s.strip() else 0.0
+
+
+def _clip(s, fs, width):
+    """Cut at a word boundary so the text fits; never mid-word unless one word is too long."""
+    if _width(s, fs) <= width:
+        return s
+    words = s.split(" ")
+    while len(words) > 1:
+        words.pop()
+        t = " ".join(words).rstrip(",;·/ ")
+        if _width(t, fs) <= width:
+            return t
+    t = words[0]
+    while t and _width(t + "…", fs) > width:
+        t = t[:-1]
+    return t + "…"
+
+
+def _wrap(s, fs, width):
+    """Greedy word wrap into a list of lines that each fit."""
+    lines, cur = [], ""
+    for w in s.split(" "):
+        t = f"{cur} {w}" if cur else w
+        if cur and _width(t, fs) > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = t
+    return lines + [cur] if cur else lines
 
 
 def _ord(p):
@@ -253,7 +288,7 @@ def page_sources(data, pdf, typ=None):
     fig.text(0.03, 0.965, "Brain Sources — one-page summary", fontsize=17, fontweight="bold",
              color="#1a1a1a", va="center")
     label = data["label"].replace("BMrICA: ", "")
-    fig.text(0.03, 0.932, f"{label}    ·    from the ICA image cascade "
+    fig.text(0.03, 0.932, _clip(label, 9.5, 0.55) + "    ·    from the ICA image cascade "
              f"({data['n']} components, sLORETA source of each)", fontsize=9.5, color="#444",
              va="center")
 
@@ -278,7 +313,7 @@ def page_sources(data, pdf, typ=None):
             transform=ax.transData)
 
     # --- cortex, 2 x 3
-    gs = GridSpec(2, 3, left=0.02, right=0.49, top=0.80, bottom=0.17, wspace=0.02, hspace=0.10)
+    gs = GridSpec(2, 3, left=0.02, right=0.44, top=0.80, bottom=0.195, wspace=0.02, hspace=0.10)
     for k, (name, lr, img, markers) in enumerate(views):
         a = fig.add_subplot(gs[k // 3, k % 3])
         a.imshow(img, interpolation="antialiased")
@@ -304,23 +339,26 @@ def page_sources(data, pdf, typ=None):
         share[band_of(c["hz"])[0]] += 100 * c["pct"] / tot
     lx = 0.03
     for name, lo, hi, col in BANDS:
-        fig.patches.append(Rectangle((lx, 0.128), 0.014, 0.018, transform=fig.transFigure,
+        fig.patches.append(Rectangle((lx, 0.150), 0.014, 0.018, transform=fig.transFigure,
                                      facecolor=col, edgecolor="none"))
         rng = f"{lo:g}-{hi:g} Hz" if hi < 1e8 else f">{lo:g} Hz"
-        fig.text(lx + 0.018, 0.137, f"{name} {rng}  {share[name]:.0f}%", fontsize=8.5,
+        fig.text(lx + 0.018, 0.159, f"{name} {rng}  {share[name]:.0f}%", fontsize=8.5,
                  va="center", color="#222")
         lx += 0.128
-    fig.text(0.03, 0.112, "Each area is coloured by the band of the accepted component that is "
+    fig.text(0.03, 0.140, "Each area is coloured by the band of the accepted component that is "
              "strongest there (weighted by its share).\nOnly each source's core is painted, for "
              f"components of {MIN_DRAW_PCT:g}% or more. Bold numbers mark peaks, small grey ones a "
              "component's other nodes; all match the table and the cascade.", fontsize=7.5, color="#555", va="top")
 
     # --- table
-    tx, ty = 0.515, 0.80
-    cols = [(0.000, "#"), (0.024, "%"), (0.060, "Band Hz"), (0.135, "Where (peak)"),
-            (0.300, "Area · typically involved in")]
+    tx, ty = 0.462, 0.80
+    right = 0.975                    # nothing in the table may pass this
+    wx, ax_, fx = 0.118, 0.262, 0.335   # Where, For age, Area columns
+    func_x = fx if typ else ax_
+    cols = [(0.000, "#"), (0.022, "%"), (0.052, "Band Hz"), (wx, "Where (peak)"),
+            (ax_, "Area · typically involved in")]
     if typ:
-        cols = cols[:4] + [(0.290, "For age"), (0.372, "Area · function")]
+        cols = cols[:4] + [(ax_, "For age"), (fx, "Area · typically involved in")]
         ap = typ["atyp_pctile"]
         verdict = ("UNUSUAL source make-up for age" if ap >= 95 else
                    "somewhat unusual for age" if ap >= 85 else "typical source make-up for age")
@@ -330,32 +368,46 @@ def page_sources(data, pdf, typ=None):
                  ("#b26a00" if ap >= 85 else "#2e7d32"))
     for dx, h in cols:
         fig.text(tx + dx, ty, h, fontsize=8.5, fontweight="bold", color="#222")
-    fig.lines.append(plt.Line2D([tx, 0.985], [ty - 0.008, ty - 0.008], transform=fig.transFigure,
+    fig.lines.append(plt.Line2D([tx, right], [ty - 0.008, ty - 0.008], transform=fig.transFigure,
                                 color="#999", lw=0.6))
     rows = acc
 
-    def also(c):
-        """Other nodes, shown under the row for drawn components."""
+    def also(c, fs):
+        """Other nodes, shown under the row for drawn components; as many as fit."""
         if 100 * c["pct"] / tot < MIN_DRAW_PCT or len(c["nodes"]) < 2:
             return ""
-        return "also " + ";  ".join(
-            f"{nd['side']} {nd['region'] or nd['lobe']}" + (f" BA {nd['ba']}" if nd["ba"] else "")
-            + f" ({100 * nd['rel']:.0f}%)" for nd in c["nodes"][1:])
+        parts = [f"{nd['side']} {nd['region'] or nd['lobe']}" + (f" BA {nd['ba']}" if nd["ba"] else "")
+                 + f" ({100 * nd['rel']:.0f}%)" for nd in c["nodes"][1:]]
+        for k in range(len(parts), 0, -1):
+            t = "also " + ";  ".join(parts[:k]) + (f";  +{len(parts) - k} more" if k < len(parts) else "")
+            if _width(t, fs) <= right - tx - wx:
+                return t
+        return _clip("also " + parts[0], fs, right - tx - wx)
 
-    units = sum(1 + (0.62 if also(c) else 0) for c in rows)
-    step = min(0.032, (ty - 0.235) / max(units, 1))
+    # the notes under the table wrap, so their height is known before the rows are spaced
+    note_fs, note_h = 7.5, 0.0165
+    notes = []
+    if typ and typ["absent"]:
+        notes.append(("#b26a00", _wrap("Expected but not found: " + "; ".join(
+            f"{cell} (in {p:.0f}% at this age)" for cell, p in typ["absent"]), note_fs, right - tx)))
+    if rej:
+        notes.append(("#666", _wrap("Removed: " + ", ".join(
+            f"{c['rank']} ({c['site']}{', line' if c['line'] else ''})" for c in rej),
+            note_fs, right - tx)))
+    note_space = sum(len(n[1]) * note_h + 0.006 for n in notes)
+    units = sum(1 + (0.62 if len(c["nodes"]) > 1 and 100 * c["pct"] / tot >= MIN_DRAW_PCT else 0)
+                for c in rows)
+    step = min(0.032, (ty - 0.008 - 0.178 - note_space) / (max(units, 1) + 0.4))
     fs = 8.0 if step >= 0.028 else 7.0
     y = ty - 0.008 - step * 0.75
     for c in rows:
         bname, bcol = band_of(c["hz"])
         fig.patches.append(Rectangle((tx - 0.008, y - 0.006), 0.005, 0.014,
                                      transform=fig.transFigure, facecolor=bcol))
-        where = f"{c['side']} {c['region'] or c['lobe']}"
-        if len(where) > 27:
-            where = where[:26] + "…"
+        where = _clip(f"{c['side']} {c['region'] or c['lobe']}", fs,
+                      (ax_ if typ else func_x) - wx - 0.006)
         func = f"BA {c['ba']} · {BA_FUNCTION.get(c['ba'], '')}" if c["ba"] else ""
-        if typ and len(func) > 25:
-            func = func[:24] + "…"
+        func = _clip(func, fs, right - tx - func_x)
         small = 100 * c["pct"] / tot < MIN_DRAW_PCT
         vals = [str(c["rank"]), f"{100 * c['pct'] / tot:.1f}", f"{bname} {c['hz']:.1f}",
                 where, func]
@@ -366,32 +418,27 @@ def page_sources(data, pdf, typ=None):
             colors = colors[:4] + [pcol if not small else "#999", colors[4]]
         for (dx, _), v, col_ in zip(cols, vals, colors):
             fig.text(tx + dx, y, v, fontsize=fs, color=col_, va="center")
-        sub = also(c)
+        sub = also(c, fs - 1.2)
         if sub:
             y -= step * 0.62
-            fig.text(tx + 0.135, y + step * 0.08, sub, fontsize=fs - 1.2, color="#666", va="center")
+            fig.text(tx + wx, y - step * 0.08, sub, fontsize=fs - 1.2, color="#666", va="center")
         y -= step
-    if typ and typ["absent"]:
-        y -= step * 0.4
-        fig.text(tx, y, "Expected but not found: " + "; ".join(
-            f"{cell} (in {p:.0f}% at this age)" for cell, p in typ["absent"]),
-            fontsize=7.5, color="#b26a00", va="top")
-        y -= step * 0.6
-    if rej:
-        y -= step * 0.4
-        txt = "Removed: " + ", ".join(
-            f"{c['rank']} ({c['site']}{', line' if c['line'] else ''})" for c in rej)
-        fig.text(tx, y, txt, fontsize=7.5, color="#666", va="top", wrap=True)
+    y += step * 0.35
+    for col_, lines in notes:
+        y -= 0.006
+        for line in lines:
+            fig.text(tx, y, line, fontsize=note_fs, color=col_, va="top")
+            y -= note_h
 
     # --- footer
-    fig.lines.append(plt.Line2D([0.03, 0.97], [0.085, 0.085], transform=fig.transFigure,
+    fig.lines.append(plt.Line2D([0.03, 0.97], [0.098, 0.098], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
     peers_note = ("\nFor age: each source's lobe x side x band, regressed on age over one study per "
                   "QA-corpus client -- a screening population, not norms. z = strength against others of "
                   "that age\nwho have such a source; % = how many have one. Sources sharing a lobe, side "
                   "and band are judged together. A red ring on the map = unusual for age."
                   if typ else "")
-    fig.text(0.03, 0.07,
+    fig.text(0.03, 0.090,
              "How to read this: sources are estimated from 19 scalp channels by sLORETA, so each "
              "location is approximate (on the order of a centimetre or more) and deep or midline "
              "peaks are least certain.\nThe 'typically involved in' column is a textbook association "
@@ -399,7 +446,7 @@ def page_sources(data, pdf, typ=None):
              "cascade's artifact rejects plus any power-line (59-61 Hz) component.\n"
              "Per-component detail (waveforms, spectrum, full source maps) is in the image cascade "
              "PDF. Display only: nothing here changes the Brain Panel metrics." + peers_note,
-             fontsize=7.2, color="#555", va="top", linespacing=1.45)
+             fontsize=6.8, color="#555", va="top", linespacing=1.35)
 
     pdf.savefig(fig, facecolor="white")
     plt.close(fig)
@@ -521,7 +568,9 @@ def analyze_networks(data):
     return use, res
 
 
-def page_networks(data, pdf, net=None):
+def page_networks(data, pdf, net=None, ctyp=None):
+    """ctyp: tools/coupling_norms.coupling_typicality() result, or None -- adds each
+    band's strength for age and the links compared with their age-expected rate."""
     use, res = net or analyze_networks(data)
     comps = data["comps"]
     tot = sum(c["pct"] for c in comps) or 1.0
@@ -530,7 +579,7 @@ def page_networks(data, pdf, net=None):
     fig = plt.figure(figsize=(11.69, 8.27), dpi=150, facecolor="white")
     fig.text(0.03, 0.965, "Brain Sources — which ones work together", fontsize=17,
              fontweight="bold", color="#1a1a1a", va="center")
-    fig.text(0.03, 0.932, f"{data['label'].replace('BMrICA: ', '')}    ·    amplitude-envelope "
+    fig.text(0.03, 0.932, f"{_clip(data['label'].replace('BMrICA: ', ''), 9.5, 0.4)}    ·    amplitude-envelope "
              f"coupling (partial) of the {len(use)} accepted components >= {MIN_COUPLE_PCT:g}%, "
              f"{ENV_BIN_S:g} s bins", fontsize=9.5, color="#444", va="center")
 
@@ -548,7 +597,16 @@ def page_networks(data, pdf, net=None):
         ax.set_xticks(range(len(names))); ax.set_yticks(range(len(names)))
         ax.set_xticklabels(names, fontsize=5.5); ax.set_yticklabels(names, fontsize=5.5)
         ax.tick_params(length=0, pad=1)
-        ax.set_title(f"{rb['band']}   |r| >= {rb['thr']:.2f} boxed", fontsize=8.5, color="#222", pad=3)
+        ax.set_title(f"{rb['band']}   |r| >= {rb['thr']:.2f} boxed", fontsize=8.5, color="#222",
+                     pad=14 if ctyp else 3)
+        if ctyp:
+            from coupling_norms import verdict
+            ct = ctyp["bands"].get(rb["band"])
+            pc = ct["pctile"] if ct else None
+            vtxt, vcol = verdict(pc)
+            ax.text(0.5, 1.015, f"{_ord(pc)} pct · {vtxt.replace(' for age', '')}" if pc is not None
+                    else vtxt, transform=ax.transAxes, ha="center", va="bottom", fontsize=6.6,
+                    color=vcol, fontweight="bold")
     cax = fig.add_axes([0.035, 0.565, 0.47, 0.010])
     cax.imshow(np.linspace(-0.5, 0.5, 256)[None, :], cmap="RdBu_r", aspect="auto",
                extent=[-0.5, 0.5, 0, 1])
@@ -565,7 +623,7 @@ def page_networks(data, pdf, net=None):
     bcol = {"Theta": "#0072B2", "Alpha": "#009E73", "Beta": "#E69F00"}
     for k, nm in enumerate(["Left lateral", "Dorsal", "Right lateral"]):
         r = vname[nm]
-        ax = fig.add_axes([0.02 + k * 0.165, 0.10, 0.16, 0.40])
+        ax = fig.add_axes([0.02 + k * 0.165, 0.125, 0.16, 0.385])
         img = r["base"].reshape(r["H"], r["W"], 3)
         ax.imshow(img, interpolation="antialiased")
 
@@ -597,21 +655,22 @@ def page_networks(data, pdf, net=None):
         ax.set_title(nm, fontsize=9, color="#333", pad=1)
     lx = 0.035
     for b, col in bcol.items():
-        fig.lines.append(plt.Line2D([lx, lx + 0.025], [0.092, 0.092], transform=fig.transFigure,
+        fig.lines.append(plt.Line2D([lx, lx + 0.025], [0.113, 0.113], transform=fig.transFigure,
                                     color=col, lw=2.5))
-        fig.text(lx + 0.03, 0.092, b, fontsize=8, va="center")
+        fig.text(lx + 0.03, 0.113, b, fontsize=8, va="center")
         lx += 0.08
-    fig.text(lx, 0.092, "solid = rise together, dashed = opposite; width = |r|.  Circles at each "
+    fig.text(lx, 0.113, "solid = rise together, dashed = opposite; width = |r|.  Circles at each "
              "component's peak.", fontsize=7.5, color="#555", va="center")
 
     # --- right column: groups and template matches
     tx, y = 0.53, 0.875
+    wid = 0.975 - tx - 0.012
     fig.text(tx, y, "Coupled groups", fontsize=11, fontweight="bold", color="#1a1a1a")
     y -= 0.032
     groups = [(rb["band"], g) for rb in res for g in rb["groups"]]
     shown_n = 0
     for band, g in groups:
-        if y < 0.44:
+        if y < (0.60 if ctyp else 0.44):
             fig.text(tx + 0.012, y, f"+ {len(groups) - shown_n} more group(s) not shown",
                      fontsize=7.5, color="#777", va="center")
             y -= 0.03
@@ -621,14 +680,13 @@ def page_networks(data, pdf, net=None):
         tname, tval = g["tmpl"]
         fig.patches.append(Rectangle((tx, y - 0.007), 0.006, 0.016, transform=fig.transFigure,
                                      facecolor=bcol[band]))
-        fig.text(tx + 0.012, y, f"{band}:  {mem}   ({g['pct']:.0f}% of recording, "
-                 f"mean r {g['mean_r']:+.2f})", fontsize=8.3, color="#111", va="center")
+        tail = f"   ({g['pct']:.0f}% of recording, mean r {g['mean_r']:+.2f})"
+        fig.text(tx + 0.012, y, _clip(f"{band}:  {mem}", 8.3, wid - _width(tail, 8.3)) + tail,
+                 fontsize=8.3, color="#111", va="center")
         y -= 0.020
         nodes = "; ".join(f"{use[i]['side']} {use[i]['region'] or use[i]['lobe']}"
                           for i in g["members"])
-        if len(nodes) > 92:
-            nodes = nodes[:91] + "…"
-        fig.text(tx + 0.012, y, nodes, fontsize=7, color="#555", va="center")
+        fig.text(tx + 0.012, y, _clip(nodes, 7, wid), fontsize=7, color="#555", va="center")
         y -= 0.018
         fig.text(tx + 0.012, y, (f"combined map matches {tname} ({tval:.1f}x chance)" if tname
                                  else f"combined map matches no template (best {tval:.1f}x)"),
@@ -640,22 +698,57 @@ def page_networks(data, pdf, net=None):
                  "in any band.", fontsize=8.3, color="#555", va="center")
         y -= 0.035
 
+    if ctyp:
+        from coupling_norms import UNCOMMON_PREV
+        y = min(y, 0.585)
+        links = sorted(((rb, k) for rb, cb in ((b, ctyp["bands"][b]) for b in ctyp["bands"])
+                        for k in cb["links"]),
+                       key=lambda v: (v[1]["prev"] is None, v[1]["prev"] or 0))
+        nu = sum(1 for _, k in links if k["prev"] is not None and k["prev"] < UNCOMMON_PREV)
+        fig.text(tx, y, "Links compared with age", fontsize=11, fontweight="bold", color="#1a1a1a")
+        fig.text(0.975, y, f"age {ctyp['age']}, {ctyp['cond']}, {ctyp['n_ref']} clients  ·  "
+                 f"{len(links)} links, {nu} uncommon", fontsize=7.5, color="#555", ha="right")
+        y -= 0.024
+        for band, k in links[:6]:
+            pr = k["prev"]
+            odd = pr is not None and pr < UNCOMMON_PREV
+            ptxt = "?" if pr is None else ("<1%" if pr < 0.01 else f"{100 * pr:.0f}%")
+            where = k["type"].split(" | ")[0]
+            fig.text(tx + 0.012, y, _clip(f"{band}  {k['a']}–{k['b']}  {where}", 7.8, wid - 0.15),
+                     fontsize=7.8, color="#111", va="center")
+            fig.text(0.975, y, f"r {k['r']:+.2f}  ·  {ptxt} of such pairs link", fontsize=7.8,
+                     color="#c62828" if odd else "#2e7d32", ha="right", va="center")
+            y -= 0.019
+        if len(links) > 6:
+            fig.text(tx + 0.012, y, f"+ {len(links) - 6} more", fontsize=7.5, color="#777", va="center")
+            y -= 0.019
+        if not links:
+            fig.text(tx + 0.012, y, "No links in this recording.", fontsize=8, color="#555", va="center")
+            y -= 0.019
+        y -= 0.012
     y = min(y, 0.38)
     fig.text(tx, y, "Single components on a network's nodes", fontsize=11, fontweight="bold",
              color="#1a1a1a")
     y -= 0.03
     hits = [c for c in use if c["tmpl"][0]]
     for c in hits[:8]:
-        fig.text(tx + 0.012, y, f"{c['rank']}  {band_of(c['hz'])[0]} {c['hz']:.1f} Hz  "
-                 f"{c['side']} {c['region'] or c['lobe']}  ->  {c['tmpl'][0]} ({c['tmpl'][1]:.1f}x)",
+        if y < 0.11:
+            break
+        fig.text(tx + 0.012, y, _clip(f"{c['rank']}  {band_of(c['hz'])[0]} {c['hz']:.1f} Hz  "
+                 f"{c['side']} {c['region'] or c['lobe']}  ->  {c['tmpl'][0]} ({c['tmpl'][1]:.1f}x)", 7.8, wid),
                  fontsize=7.8, color=NET_COL[c["tmpl"][0]], va="center")
         y -= 0.021
     if not hits:
         fig.text(tx + 0.012, y, "none", fontsize=8, color="#777")
 
-    fig.lines.append(plt.Line2D([0.03, 0.97], [0.072, 0.072], transform=fig.transFigure,
+    fig.lines.append(plt.Line2D([0.03, 0.97], [0.100, 0.100], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
-    fig.text(0.03, 0.064,
+    age_note = ("\nFor age: band strength is regressed on age and recording size (number of pairs, "
+                "threshold) over one study per QA-corpus client -- a screening population, not norms.\nA "
+                "link's % is how often that region pair links in that direction at this age; "
+                "red = under 1%."
+                if ctyp else "")
+    fig.text(0.03, 0.092,
              "How to read this: ICA makes components independent sample by sample, but their band "
              "amplitudes can still rise and fall together over seconds, the timescale on which "
              "resting-state networks co-vary.\nEach r is PARTIAL: all other components and the "
@@ -665,8 +758,8 @@ def page_networks(data, pdf, net=None):
              "approximate literature centres (15 mm spheres); deep nodes (insula, hippocampus) are "
              "poorly seen from 19 channels,\nand eye artifacts localize near the salience network's "
              "anterior insula and orbitofrontal cortex, so check a salience match against the "
-             "component's band (delta = suspect). Display only.",
-             fontsize=6.9, color="#555", va="top", linespacing=1.45)
+             "component's band (delta = suspect). Display only." + age_note,
+             fontsize=6.6, color="#555", va="top", linespacing=1.3)
     pdf.savefig(fig, facecolor="white")
     plt.close(fig)
 

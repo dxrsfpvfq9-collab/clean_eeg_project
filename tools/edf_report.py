@@ -547,7 +547,15 @@ def main():
                 print("source typicality unavailable:", exc)
             ss.page_sources(data, pdf, typ)
             if data["sources"] is not None:
-                ss.page_networks(data, pdf)
+                net = ss.analyze_networks(data)
+                ctyp = None
+                try:
+                    import coupling_norms
+                    ctyp = coupling_norms.coupling_typicality(*net, age, cond, a.store,
+                                                              client=patient_hash(a.edf))
+                except Exception as exc:      # no database / no reference: page without norms
+                    print("coupling norms unavailable:", exc)
+                ss.page_networks(data, pdf, net, ctyp)
     print("wrote", out)
 
 
