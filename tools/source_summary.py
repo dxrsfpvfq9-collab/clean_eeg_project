@@ -237,7 +237,7 @@ def render(base, npz, out):
 
 def page_sources(data, pdf, typ=None):
     """typ: tools/source_norms.typicality() result, or None -- adds the age-peer
-    column, the study's source-make-up percentile and expected-but-absent cells."""
+    column and map rings, the study's source-make-up percentile and expected-but-absent cells."""
     comps = data["comps"]
     acc = [c for c in comps if c["accept"]]
     rej = [c for c in comps if not c["accept"]]
@@ -284,7 +284,9 @@ def page_sources(data, pdf, typ=None):
         a.imshow(img, interpolation="antialiased")
         for pc, pr, rank, primary in sorted(markers, key=lambda m: m[3]):   # peaks on top
             if primary:
-                a.plot(pc, pr, "o", ms=10, mfc="white", mec="#222", mew=0.8, alpha=0.9)
+                odd = typ and rank in typ["flagged"]      # red ring: unusual for age
+                a.plot(pc, pr, "o", ms=11 if odd else 10, mfc="white", mec="#c62828" if odd else "#222",
+                       mew=1.8 if odd else 0.8, alpha=0.9)
                 a.text(pc, pr, str(rank), ha="center", va="center", fontsize=6.5, color="#111",
                        fontweight="bold")
             else:
@@ -318,11 +320,11 @@ def page_sources(data, pdf, typ=None):
     cols = [(0.000, "#"), (0.024, "%"), (0.060, "Band Hz"), (0.135, "Where (peak)"),
             (0.300, "Area · typically involved in")]
     if typ:
-        cols = cols[:4] + [(0.290, "Age peers"), (0.372, "Area · typically involved in")]
+        cols = cols[:4] + [(0.290, "For age"), (0.372, "Area · function")]
         ap = typ["atyp_pctile"]
         verdict = ("UNUSUAL source make-up for age" if ap >= 95 else
                    "somewhat unusual for age" if ap >= 85 else "typical source make-up for age")
-        fig.text(tx, ty + 0.032, f"vs {typ['n_peers']} age peers ({typ['cond']}): "
+        fig.text(tx, ty + 0.032, f"For age {typ['age']} ({typ['cond']}, {typ['n_ref']} clients): "
                  f"{_ord(ap)} percentile — {verdict}", fontsize=8.5,
                  fontweight="bold", color="#c62828" if ap >= 95 else
                  ("#b26a00" if ap >= 85 else "#2e7d32"))
@@ -372,7 +374,7 @@ def page_sources(data, pdf, typ=None):
     if typ and typ["absent"]:
         y -= step * 0.4
         fig.text(tx, y, "Expected but not found: " + "; ".join(
-            f"{cell} (in {p:.0f}% of peers)" for cell, p in typ["absent"]),
+            f"{cell} (in {p:.0f}% at this age)" for cell, p in typ["absent"]),
             fontsize=7.5, color="#b26a00", va="top")
         y -= step * 0.6
     if rej:
@@ -384,9 +386,11 @@ def page_sources(data, pdf, typ=None):
     # --- footer
     fig.lines.append(plt.Line2D([0.03, 0.97], [0.085, 0.085], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
-    peers_note = ("\nAge peers: each source's lobe x side x band against the 80 QA-corpus clients "
-                  "nearest in age, one study each -- a screening population, not norms; "
-                  "'typical (62%)' = 62% of them have a source like it." if typ else "")
+    peers_note = ("\nFor age: each source's lobe x side x band, regressed on age over one study per "
+                  "QA-corpus client -- a screening population, not norms. z = strength against others of "
+                  "that age\nwho have such a source; % = how many have one. Sources sharing a lobe, side "
+                  "and band are judged together. A red ring on the map = unusual for age."
+                  if typ else "")
     fig.text(0.03, 0.07,
              "How to read this: sources are estimated from 19 scalp channels by sLORETA, so each "
              "location is approximate (on the order of a centimetre or more) and deep or midline "

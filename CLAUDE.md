@@ -592,21 +592,29 @@ so the 2026 validation study's `pdr_freq_abnorm` still carries the bug.
 
 **Source typicality** (`tools/source_norms.py`, tables `source_typ` +
 `source_atyp`; results `research/validation_2026/out/SOURCE_TYPICALITY.md`).
-Each accepted component -> a cell (lobe of peak x side x band; 40 cells);
-each study vs its 80 nearest-age clients of the same condition (one study per
-client, own client excluded). Per cell: prevalence among peers, percentile,
-flag rare (>= 2%, < 5% of peers have it) / strong (>= 2%, above every peer) /
-absent (< 0.5%, >= 90% have it). Study verdict = share-weighted surprise
-score ranked leave-one-out against the peers (`atyp_pctile`; >= 95 unusual,
-6% of studies). Two calibration lessons: a 95th-percentile per-cell line over
-40 cells flagged 82% of studies; an UNWEIGHTED surprise sum called a study
-typical whose two largest sources (58%) were above every peer. The source
-page (`page_sources(..., typ)`, used by `edf_report`) gets an "Age peers"
-column, the verdict line and expected-but-absent cells. **Against the doctor's
-comments the verdict carries no signal** (clinical abnormality AUC 0.49/0.55,
-drowsiness ~0.5); the one coherent lead is reader-confirmed PDR slowing, with
-less right-parietal alpha source (cell AUC 0.28) and more right parietal /
-temporal theta (0.63-0.64) -- 14 positives.
+Each accepted component -> a cell (lobe of peak x side x band; 40 cells),
+**regressed on age** per cell and condition over one study per client. Shares
+are mostly zero, so two parts: logistic prev(age) of having the source, then
+log(share) mean and SD by age among those who do. Per cell: z, prevalence at
+that age, flag rare (>= 2%, < 5% have it) / strong (>= 2%, tail <= 1%) / absent
+(< 0.5%, >= 90% have it). Study verdict = share-weighted surprise, log regressed
+on age and ranked (`atyp_pctile`; >= 95 unusual). Stored studies are scored by
+models fitted without their own client (5 folds by client); `typicality()` refits
+when the client is in the reference. Calibration (out-of-client): source z mean
+~0, SD 1.0-1.2 in every age band; verdict vs age rho 0.00; 5% at >= 95 overall.
+**44% of studies still carry at least one flagged cell** (72% EC age 65+), so
+one red source alone is common; use the verdict for the study. Replaced an 80
+nearest-age window, whose peers stretched at the age extremes (rho 0.97 with the
+new verdict, but only 62 of 113 studies flagged by either were flagged by both).
+Earlier lessons: a 95th-percentile per-cell line over 40 cells flagged 82% of
+studies; an UNWEIGHTED surprise sum called a study typical whose two largest
+sources (58%) were extreme. The source page (`page_sources(..., typ)`, used by
+`edf_report`) gets a "For age" column (z and % who have one), a red ring on
+flagged sources on the map, the verdict line and expected-but-absent cells.
+**Against the doctor's comments:** clinical abnormality AUC 0.48/0.54, drowsiness
+~0.5, paroxysmal 0.40/0.60 (9-11 positives); reader-confirmed PDR slowing EC 0.67
+(CI 0.52-0.79; unusual % 0.71), EO 0.56 -- 14 positives each, with less
+right-parietal alpha source (cell AUC 0.37).
 
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
