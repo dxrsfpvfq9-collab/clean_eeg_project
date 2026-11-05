@@ -116,16 +116,32 @@ def _ridge(n_train):
                          LogisticRegression(C=0.05, max_iter=3000))
 
 
-def drowsy_note(edf_path, age, cond, cp, store=STORE, client=None):
-    """Soft cover-page note, eyes-closed only (eyes-open reached only 0.64 and fails in
-    children and older adults). Ridge on EDF power + time-resolved features, fitted without
-    this client. Returns dict(possible, rate) or None. possible = the score falls in the top
-    third of out-of-client reference scores; rate = how often the reader noted drowsiness there."""
-    if cond != "EC" or age is None or not 3 <= age <= 90:
-        return None
-    import edf_power
+def apply_note(m, me):
+    """The fitted ridge pipeline as plain arithmetic, so a report needs no sklearn:
+    median impute, QuantileTransformer to normal, logistic. fit_note(check=True)
+    fails if this differs from sklearn's own answer."""
+    from scipy.stats import norm
+    x = np.array([me.get(n, np.nan) for n in m["names"]], float)
+    x = np.where(np.isfinite(x), x, np.array(m["medians"]))
+    q = np.array(m["quantiles"])
+    ref = np.array(m["references"])
+    u = np.empty(len(x))
+    for j in range(len(x)):
+        qj = q[:, j]
+        u[j] = 0.5 * (np.interp(x[j], qj, ref) - np.interp(-x[j], -qj[::-1], -ref[::-1]))
+        if x[j] == qj[-1]:
+            u[j] = 1.0
+        if x[j] == qj[0]:
+            u[j] = 0.0
+    bound = 1e-7 - np.spacing(1)
+    z = np.clip(norm.ppf(u), norm.ppf(bound), norm.ppf(1 - bound))
+    return float(1 / (1 + np.exp(-(m["intercept"] + z @ np.array(m["coef"])))))
+
+
+def fit_note(store=STORE, client=None, check=False):
+    """Fit the eyes-closed note: ridge on EDF power + time-resolved features, without
+    this client. Returns plain numbers (what tools/freeze_models.py stores), or None."""
     from sklearn.model_selection import StratifiedGroupKFold
-    from vigilance_features import features
     if store not in _LOADED:
         con = sqlite3.connect(os.path.join(store, "sources.db"))
         _LOADED[store] = load(con)
@@ -142,13 +158,39 @@ def drowsy_note(edf_path, age, cond, cp, store=STORE, client=None):
     for tr, te in StratifiedGroupKFold(5, shuffle=True, random_state=0).split(X, yy, g):
         oof[te] = _ridge(len(tr)).fit(X[tr], yy[tr]).predict_proba(X[te])[:, 1]
     cut = np.percentile(oof, 200 / 3)
+    pipe = _ridge(len(yy)).fit(X, yy)
+    keep = ~np.isnan(pipe[0].statistics_)      # the imputer drops all-empty columns
+    m = dict(names=[n for n, k in zip(names, keep) if k], medians=pipe[0].statistics_[keep].tolist(),
+             quantiles=pipe[1].quantiles_.tolist(), references=pipe[1].references_.tolist(),
+             coef=pipe[2].coef_[0].tolist(), intercept=float(pipe[2].intercept_[0]),
+             cut=float(cut), rate=float(yy[oof > cut].mean()), n=len(yy))
+    if check:
+        ours = np.array([apply_note(m, dict(zip(names, row))) for row in X])
+        worst = np.abs(ours - pipe.predict_proba(X)[:, 1]).max()
+        if worst > 1e-9:
+            raise ValueError(f"apply_note differs from sklearn by {worst:.2e}")
+    return m
+
+
+def drowsy_note(edf_path, age, cond, cp, store=STORE, client=None, frozen=None):
+    """Soft cover-page note, eyes-closed only (eyes-open reached only 0.64 and fails in
+    children and older adults). Returns dict(possible, rate) or None. possible = the score
+    falls in the top third of out-of-client reference scores; rate = how often the reader
+    noted drowsiness there. frozen: the bundle's model; otherwise refit without this client."""
+    if cond != "EC" or age is None or not 3 <= age <= 90:
+        return None
+    import edf_power
+    from vigilance_features import features
+    m = frozen if frozen is not None else fit_note(store, client)
+    if m is None:
+        return None
     vig = features(edf_path)
     if vig is None:
         return None
     me = {"age": age, **edf_power.summary(cp), **vig}
-    x = matrix([0], lambda _u: {k: v for k, v in me.items() if v is not None and np.isscalar(v)}, names)
-    score = float(_ridge(len(yy)).fit(X, yy).predict_proba(x)[0, 1])
-    return dict(possible=score > cut, rate=float(yy[oof > cut].mean()), score=score, cut=float(cut))
+    me = {k: v for k, v in me.items() if v is not None and np.isscalar(v)}
+    score = apply_note(m, me)
+    return dict(possible=score > m["cut"], rate=m["rate"], score=score, cut=m["cut"])
 
 
 def grade_of(text):

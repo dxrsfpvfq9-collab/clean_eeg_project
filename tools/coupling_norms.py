@@ -179,19 +179,23 @@ def score_rows(band, rows, age, models):
                 n_uncommon=sum(1 for k in links if k["prev"] is not None and k["prev"] < UNCOMMON_PREV))
 
 
-def coupling_typicality(use, res, age, cond, store=DEFAULT_STORE, client=None):
-    """For page_networks: analyze_networks() output against age norms. A client in
-    the reference is left out of the fit. None when age or condition are unknown."""
+def coupling_typicality(use, res, age, cond, store=DEFAULT_STORE, client=None, frozen=None):
+    """For page_networks: analyze_networks() output against age norms. None when age
+    or condition are unknown. frozen: the bundle's entry for this condition (no
+    database). Otherwise a client in the reference is left out of the fit."""
     if age is None or cond not in ("EC", "EO") or not AGE_MIN <= age <= AGE_MAX:
         return None
-    con = sqlite3.connect(os.path.join(store, "sources.db"))
-    pairs = load_pairs(con)
-    st, ref = reference(con, pairs)
-    con.close()
-    ids = [s for s in ref[cond] if st[s]["client"] != client]
-    if len(ids) < 50:
-        return None
-    models = fit(ids, st, pairs)
+    if frozen is not None:
+        models, n_ref = frozen, frozen["n"]
+    else:
+        con = sqlite3.connect(os.path.join(store, "sources.db"))
+        pairs = load_pairs(con)
+        st, ref = reference(con, pairs)
+        con.close()
+        ids = [s for s in ref[cond] if st[s]["client"] != client]
+        if len(ids) < 50:
+            return None
+        models, n_ref = fit(ids, st, pairs), len(ids)
     out = {}
     for rb in res:
         thr = rb["thr"]
@@ -206,7 +210,7 @@ def coupling_typicality(use, res, age, cond, store=DEFAULT_STORE, client=None):
                         rows.append((use[i]["rank"], use[j]["rank"],
                                      pair_type(ra, rc, rb["band"]), r, r / thr, thr))
         out[rb["band"]] = score_rows(rb["band"], rows, age, models)
-    return dict(bands=out, n_ref=len(ids), cond=cond, age=age)
+    return dict(bands=out, n_ref=n_ref, cond=cond, age=age)
 
 
 def verdict(pc):

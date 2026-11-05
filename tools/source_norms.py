@@ -236,29 +236,37 @@ def atyp_pct(calib, age, atyp):
 
 
 # ------------------------------------------------------------------ one new study
-def typicality(comps, age, cond, store=DEFAULT_STORE, client=None):
+def typicality(comps, age, cond, store=DEFAULT_STORE, client=None, frozen=None):
     """Age-regressed typicality of one study's sources from
     source_summary.load()['comps'], for the source page. None when age or
-    condition are unknown. A client in the reference set is left out of the fit."""
+    condition are unknown. frozen: the bundle's entry for this condition (no database).
+    Otherwise a client in the reference set is left out of the fit."""
     if age is None or cond not in ("EC", "EO") or not AGE_MIN <= age <= AGE_MAX:
         return None
-    con = sqlite3.connect(os.path.join(store, "sources.db"))
-    rows = {r[0]: r[1:] for r in con.execute(
-        "SELECT cell, logit_coef, mean_coef, sd_coef, n FROM source_models WHERE cond=?", (cond,))}
-    cal = con.execute("SELECT mean_coef, sd_coef, resid_z, n FROM source_calib WHERE cond=?",
-                      (cond,)).fetchone()
-    if not rows or cal is None:
-        con.close()
-        return None
-    st, cells, ref = reference(con)
-    con.close()
-    keep = [s for s in ref[cond] if st[s]["client"] != client]
-    if len(keep) < len(ref[cond]):
-        models = fit_models(np.array([st[s]["age"] for s in keep], float),
-                            np.array([cells[s] for s in keep]))
+    if frozen is not None:
+        if frozen["cells"] != CELLS:
+            raise ValueError("bundle's source cells differ from this code's")
+        models, calib, n_ref = frozen["models"], frozen["calib"], frozen["n"]
     else:
-        models = [dict(logit=json.loads(rows[c][0]), mean=json.loads(rows[c][1]),
-                       sd=json.loads(rows[c][2])) for c in CELLS]
+        con = sqlite3.connect(os.path.join(store, "sources.db"))
+        rows = {r[0]: r[1:] for r in con.execute(
+            "SELECT cell, logit_coef, mean_coef, sd_coef, n FROM source_models WHERE cond=?", (cond,))}
+        cal = con.execute("SELECT mean_coef, sd_coef, resid_z, n FROM source_calib WHERE cond=?",
+                          (cond,)).fetchone()
+        if not rows or cal is None:
+            con.close()
+            return None
+        st, cells, ref = reference(con)
+        con.close()
+        keep = [s for s in ref[cond] if st[s]["client"] != client]
+        if len(keep) < len(ref[cond]):
+            models = fit_models(np.array([st[s]["age"] for s in keep], float),
+                                np.array([cells[s] for s in keep]))
+        else:
+            models = [dict(logit=json.loads(rows[c][0]), mean=json.loads(rows[c][1]),
+                           sd=json.loads(rows[c][2])) for c in CELLS]
+        calib = dict(mean=json.loads(cal[0]), sd=json.loads(cal[1]), resid=json.loads(cal[2]))
+        n_ref = cal[3]
     tot = sum(c["pct"] for c in comps) or 1.0
     v = np.zeros(len(CELLS))
     cell_k = {}
@@ -271,8 +279,7 @@ def typicality(comps, age, cond, store=DEFAULT_STORE, client=None):
             v[k] += 100 * c["pct"] / tot
             cell_k[c["rank"]] = k
     r = score(v, age, models)
-    ap = atyp_pct(dict(mean=json.loads(cal[0]), sd=json.loads(cal[1]), resid=json.loads(cal[2])),
-                  age, r["atyp"])
+    ap = atyp_pct(calib, age, r["atyp"])
     per, flagged = {}, set()
     for rank, k in cell_k.items():
         p, z, f = r["prev"][k], r["z"][k], r["flag"][k]
@@ -289,7 +296,7 @@ def typicality(comps, age, cond, store=DEFAULT_STORE, client=None):
         else:
             per[rank] = (ztxt, "#2e7d32")
     absent = [(CELLS[k], 100 * r["prev"][k]) for k in range(len(CELLS)) if r["flag"][k] == "absent"]
-    return dict(per_rank=per, flagged=flagged, atyp_pctile=ap, absent=absent, n_ref=cal[3],
+    return dict(per_rank=per, flagged=flagged, atyp_pctile=ap, absent=absent, n_ref=n_ref,
                 cond=cond, age=age)
 
 

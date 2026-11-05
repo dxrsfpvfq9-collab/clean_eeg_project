@@ -23,7 +23,11 @@ read from <edf>.sources.npz when present (or --sidecar).
 THE REFERENCE IS A SCREENING POPULATION, NOT NORMS -- printed on the page.
 
     py tools/edf_report.py "<edf>" [--age N] [--cond EC|EO] [--out PDF]
-                                   [--sidecar NPZ] [--store DIR]
+                                   [--sidecar NPZ] [--models JSON] [--refit]
+
+Scores come from the frozen bundle (tools/report_models.py), so no database is
+needed. --refit scores from the source database instead, leaving this client
+out: workstation only, and the one to use when testing accuracy on the corpus.
 
 Output defaults to <edf>.edfreport.pdf; for an EDF inside the Dropbox QA
 corpus it goes to <store>/pdf/ instead, so nothing is written next to the
@@ -45,11 +49,14 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import edf_power                                   # noqa: E402
 import reference_ranges as rr                      # noqa: E402
+import report_models                               # noqa: E402
 from files.deidentify import deidentify_label      # noqa: E402
 
 DEFAULT_STORE = r"C:\BrainPanel\source_db"
 CORPUS = r"C:\Users\tcollura\Dropbox\STS EEG Quality Assurance Reviews"
 Z_FLAG = 2.0
+SUMMARY = {}          # what the cover said, for --summary: scores only, no names
+MODEL_STAMP = ""      # set in main: which reference models scored this report
 LINE_BAD = 50.0       # % of 1-80 Hz power at the worst site
 MAP_BANDS = [("rel_delta", "Delta 1-4 Hz"), ("rel_theta", "Theta 4-8 Hz"),
              ("rel_alpha", "Alpha 8-13 Hz"), ("rel_beta", "Beta 13-21 Hz")]
@@ -271,6 +278,10 @@ def plain_quality(grade, detail):
             + ". Treat these results with extra caution.")
 
 
+def stamp(fig):
+    fig.text(0.94, 0.008, MODEL_STAMP, fontsize=5.5, color="0.5", ha="right")
+
+
 def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, ctyp, stats, contents,
                drowsy=None):
     """Plain-language summary. Reuses the same scores as the pages behind it."""
@@ -278,7 +289,7 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
     sm = edf_power.summary(cp)
     fig = plt.figure(figsize=(8.5, 11))
     L, R = 0.06, 0.94
-    fig.text(L, 0.965, "EEG Report: Summary", fontsize=18, weight="bold", color="#1a1a1a")
+    fig.text(L, 0.965, "BrainMaster BrainPanel / ICA Analysis Report", fontsize=18, weight="bold", color="#1a1a1a")
     fig.text(L, 0.942, label, fontsize=9, color="0.25")
     fig.text(L, 0.926, f"Age {age if age is not None else 'unknown'}   ·   "
              f"{'Eyes closed' if cond == 'EC' else 'Eyes open'}   ·   Recorded {rec or 'unknown'}",
@@ -296,6 +307,7 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
         if z is None:
             rows.append((name, what.capitalize() + ".", "No comparison", "#777", None))
             continue
+        SUMMARY.setdefault("tiles", {})[f] = dict(value=float(v), z=round(z, 3), pct=round(p, 1))
         if abs(z) >= Z_FLAG:
             flagged.append((abs(z), (f, 1 if z > 0 else -1), hi if z > 0 else lo))
         state = ("Typical" if abs(z) < 1.5 else "Slightly " if abs(z) < Z_FLAG else "")
@@ -375,15 +387,24 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
 
     # --- headline
     grade, _c, detail = quality(cp, None)
+    SUMMARY.update(
+        age=age, cond=cond, n_stand=n_stand, grade=grade, quality=detail, notes=notes,
+        rows=[(r[0], r[2]) for r in rows], assoc=[f"{k[0]}:{k[1]}" for k, _s in assoc_keys],
+        drowsy=drowsy,
+        atyp_pctile=typ["atyp_pctile"] if typ else None,
+        brain_pct=brain if data is not None else None,
+        coupling={b: dict(pct=v["pctile"], uncommon=v["n_uncommon"], n_pairs=v["n_pairs"])
+                  for b, v in ctyp["bands"].items()} if ctyp else None,
+        n_oob=n_oob if panel else None, contents=[t for _p, t in contents])
     if age is None:
-        head = "Age was not available, so nothing could be compared with others of the same age."
+        head = "No age given, so nothing could be compared by age."
     elif n_stand == 0:
         head = "Nothing in this recording stands out for someone of this age."
     elif n_stand == 1:
         head = "One result stands out for someone of this age."
     else:
         head = f"{n_stand} results stand out for someone of this age."
-    box = "#fdf1f0" if n_stand else "#eef6ef"
+    box = "#f0f0f0" if age is None else "#fdf1f0" if n_stand else "#eef6ef"
     fig.patches.append(plt.Rectangle((L, 0.846), R - L, 0.064, transform=fig.transFigure,
                                      facecolor=box, edgecolor="none"))
     fig.text(L + 0.015, 0.889, head, fontsize=12.5, weight="bold", color="#1a1a1a", va="center")
@@ -421,7 +442,11 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
     y -= 0.018
     shown = [(ASSOCIATIONS[k], s) for k, s in assoc_keys if k in ASSOCIATIONS]
     others = len(assoc_keys) - len(shown)
-    if not n_stand:
+    if age is None:
+        fig.text(L, y, "Nothing could be compared without an age, so there is nothing to note here.",
+                 fontsize=8, color="0.3")
+        y -= 0.018
+    elif not n_stand:
         fig.text(L, y, "No result stands out, so there is nothing to note here.", fontsize=8, color="0.3")
         y -= 0.018
     elif not assoc_keys:
@@ -453,7 +478,7 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
     fig.text(L, y, "Keep in mind", fontsize=11, weight="bold", color="#1a1a1a")
     y -= 0.016
     usual = (f"About {100 * stats[0]:.0f} in 100 people in this group have at least one of the six rhythm "
-             "measures stand out, so one result alone is common. " if stats[0] is not None else "")
+             "measures stand out, so one result alone is common. " if stats[0] is not None and age is not None else "")
     para = (usual + "\"Typical\" means compared with other people of this age referred for EEG screening, "
             "not with people known to be healthy. The sources and coupling results are descriptive: in our "
             "testing they did not reliably match doctors' comments. This is screening information for a "
@@ -465,6 +490,7 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
              fontsize=7.2, color="0.35")
     if notes:
         fig.text(L, 0.030, _wrap(" ".join(notes), 130), fontsize=6.8, color="#b26a00", va="top")
+    stamp(fig)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -602,6 +628,7 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
         "this age, not abnormal. Power from the raw EDF (median Welch, 4 s, no ICA). "
         "Screening information for a qualified practitioner; not a diagnosis.", 150),
         fontsize=6, color="0.35", va="bottom")
+    stamp(fig)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -771,6 +798,7 @@ def page_panel(pdf, label, age, cond, panel, cp, models):
         "are age-by-condition z from the QA-corpus reference (a screening population, not norms). "
         "Screening information for a qualified practitioner; not a diagnosis.", 150),
         fontsize=6, color="0.35", va="bottom")
+    stamp(fig)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -795,6 +823,10 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--sidecar")
     ap.add_argument("--store", default=DEFAULT_STORE)
+    ap.add_argument("--summary", help="also write what the cover said as JSON")
+    ap.add_argument("--models", default=report_models.DEFAULT_PATH)
+    ap.add_argument("--refit", action="store_true",
+                    help="score from the source database, leaving this client out")
     ap.add_argument("--panel", help="production .icale.rep.pdf (default: next to the EDF)")
     a = ap.parse_args()
 
@@ -806,7 +838,15 @@ def main():
     if cond is None:
         cond = "EC"
         notes.append("Condition not in the file name: scored against the eyes-closed reference.")
-    models = load_models(a.store, cond)
+    global MODEL_STAMP
+    bundle = None
+    if a.refit:
+        models = load_models(a.store, cond)
+        MODEL_STAMP = "Reference models: refit from the database, client left out"
+    else:
+        bundle = report_models.load(a.models)
+        models = bundle["reference"][cond]
+        MODEL_STAMP = "Reference models " + bundle["version"]
     if age is not None and "paf_post" in models and not (
             models["paf_post"]["age_min"] <= age <= models["paf_post"]["age_max"]):
         notes.append(f"Age {age} is outside the reference ages "
@@ -841,23 +881,25 @@ def main():
         data = ss.load(sidecar)
         try:
             import source_norms
-            typ = source_norms.typicality(data["comps"], age, cond, a.store,
-                                          client=patient_hash(a.edf))
+            typ = (source_norms.typicality(data["comps"], age, cond, frozen=bundle["source"][cond]) if bundle
+                   else source_norms.typicality(data["comps"], age, cond, a.store, client=patient_hash(a.edf)))
         except Exception as exc:      # no database / no reference: page without peers
             print("source typicality unavailable:", exc)
         if data["sources"] is not None:
             net = ss.analyze_networks(data)
             try:
                 import coupling_norms
-                ctyp = coupling_norms.coupling_typicality(*net, age, cond, a.store,
-                                                          client=patient_hash(a.edf))
+                ctyp = (coupling_norms.coupling_typicality(*net, age, cond, frozen=bundle["coupling"][cond]) if bundle
+                        else coupling_norms.coupling_typicality(*net, age, cond, a.store,
+                                                                client=patient_hash(a.edf)))
             except Exception as exc:  # no database / no reference: page without norms
                 print("coupling norms unavailable:", exc)
-    stats = group_stats(a.store, cond)
+    stats = tuple(bundle["group_stats"][cond]) if bundle else group_stats(a.store, cond)
     drowsy = None
     try:
         import drowsiness_model
-        drowsy = drowsiness_model.drowsy_note(a.edf, age, cond, cp, a.store, client=patient_hash(a.edf))
+        drowsy = (drowsiness_model.drowsy_note(a.edf, age, cond, cp, frozen=bundle["drowsiness"]) if bundle
+                  else drowsiness_model.drowsy_note(a.edf, age, cond, cp, a.store, client=patient_hash(a.edf)))
     except Exception as exc:          # no database / no reference: cover without the note
         print("drowsiness note unavailable:", exc)
     contents = ["EEG measures"] + (["Brain Panel"] if panel else []) + (["brain sources"] if data else []) \
@@ -874,6 +916,9 @@ def main():
             ss.page_sources(data, pdf, typ)
             if net is not None:
                 ss.page_networks(data, pdf, net, ctyp)
+    if a.summary:
+        with open(a.summary, "w", encoding="utf-8") as fh:
+            json.dump(SUMMARY, fh, indent=1, default=float)
     print("wrote", out)
 
 

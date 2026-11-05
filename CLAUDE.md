@@ -33,6 +33,7 @@ compares each against a reference database (`EC_191.out_file.icale.xlsx`,
 | `py tools/compare_studies.py prepost\|eceo "<A>" "<B>"` | **Prototype.** Two studies of one client → `<B>.prepost.pdf` or `<B>.eceo.pdf`. Reads the rendered panels/cascades (+ EDFs). See "Study comparison" below. |
 | `py tools/source_summary.py "<edf>"` | **Prototype.** One-page source summary of a cascade → `<edf>.sources.pdf`. Needs the `.sources.npz` sidecar. See "Source summary" below. |
 | `py tools/edf_report.py "<edf>" [--age N] [--cond EC\|EO]` | **Prototype.** EDF Analysis Report: age-adjusted headline tiles, head maps, findings (+ source pages if a `.sources.npz` exists) → `<edf>.edfreport.pdf`. See "EDF Analysis Report" below. |
+| `py tools/freeze_models.py` | Writes the report's frozen reference, `models/edf_report_models.json`, from the source database. See "Frozen models" below. |
 | `py tools/coupling_norms.py` | Rebuilds the age norms for source coupling (tables + `COUPLING_NORMS.md`), about 1 min. See "Coupling norms" below. |
 | `py tools/source_batch.py [--pdf]` | Builds the **source database** over the QA corpus, newest first, resumable. Sidecar-only ICA pass per study (~25 s, no windows), store `C:\BrainPanel\source_db`. See "Source database" below and `docs/BRAINVIEW_ROADMAP.md`. |
 
@@ -664,6 +665,50 @@ dropped `Fz`/`Cz`/`Pz` and broke 3 studies until it was corrected. Dev only;
 the servers' deploy set does not have it.
 
 ## EDF Analysis Report (prototype, `tools/edf_report.py`)
+
+**Frozen models** (`tools/freeze_models.py`, `tools/report_models.py`). The report scores
+from `models/edf_report_models.json`, so it needs no database (the store's paths carry names)
+and no refit, and the same EDF gives the same report. JSON only: coefficients, counts and
+201-point quantile tables, no per-study rows; the build refuses to write if a study id or client
+hash from the database appears in it. The version is printed on the cover and measures page.
+The drowsiness model is plain numpy (`apply_note`), checked against sklearn at build. A frozen
+model cannot leave a client out, so test accuracy with `--refit`. On the newest 100: tile z
+identical (`--refit` does not refit the ref_models either), drowsiness call the same in 35 of 37,
+source and coupling percentiles within 2 on average. Re-run after any change to the features.
+
+**Assessment on the newest 100 studies, 2026-11-05** (results
+`research/validation_2026/out/REPORT_ASSESSMENT_100.md`, scripts
+`research/validation_2026/report_assessment/`). All 100 ran, ~25 s each. Known problems:
+- **No age: 27 of 100** (425 of 1,676 in the corpus): the cover compares nothing. The age comes
+  only from the file name; the doctor's reports and most EDF headers do not state it either.
+- **The slow-alpha flag** disagreed with the doctor's stated frequency in 13 of 14 EC studies; fixed,
+  see "Posterior alpha peak" below.
+- **Flags do not repeat:** 40 same-condition repeat pairs (17 clients, same age and folder, <= 90
+  days): tile r 0.15-0.53; of 23 tile flags in either recording, 5 were in both.
+- **The headline count does not track the doctor:** 639 labelled studies, AUC 0.46-0.61 for clinical
+  abnormality, drowsiness, paroxysmal and PDR slowing. The drowsiness row is the exception (0.72).
+- **The quality grade does not match the doctor's artifact wording,** and 35 of 72 findings
+  on the newest 100 have no association text (most often high resting rhythm).
+
+**Posterior alpha peak** (`edf_power.posterior_peak`, tiles and `edf_features.paf_post`; changed
+2026-11-05; scripts in `research/validation_2026/report_assessment/`). Was the mean over posterior
+sites of each site's 7-13 Hz maximum. Now the mean posterior spectrum with its 1/f slope removed
+(fit on 2-7 and 14-30 Hz), tallest local maximum at least 1.5x over the slope, one-bin spikes passed
+over. The per-site `chan_power.paf` keeps the old rule. The 16 EC studies with a peak under 8 Hz and
+the doctor at 9+ Hz, plotted: 9 had a weak or broad bump or only a shoulder on the slope (now 3 no
+peak, 4 moved up, 2 unchanged). 7, from 3 clients, had a tall sharp peak at every site. One client's
+4 were a one-bin spike at exactly 8.0 Hz with a 16 Hz harmonic; passing over it gives 9.2-10.0 Hz,
+next to the doctor's 9.5, so that 8 Hz is probably not brain. The other 3 (7.5-7.8 Hz, 2 clients)
+are not one-bin and stay low; unexplained. Mains sits near 60 Hz and the rate is 256 in all 16, so
+the rate is not mislabelled. **Do not filter
+on peak width:** a 0.75 Hz test moved 36 studies away from the doctor and 14 towards, because real
+alpha is often that narrow. Tuned on half the clients; on the other half, EC peak under 8 Hz 13 -> 5
+(doctor 9+ 9 -> 3), rho 0.54 -> 0.64; EO 16 -> 6 (14 -> 2), rho 0.21 -> 0.34. Repeats (40 pairs): r 0.45
+-> 0.54, median difference 0.55 -> 0.31 Hz. Cost: no peak in 16% -> 22% of EO (EC 5% -> 6%). Whole
+corpus, EC flag z <= -2 with a stated frequency: within 1 Hz of the doctor 1 of 14 -> 6 of 10; it still
+catches only 3 of 14 doctor-slow, whose peaks are mostly not low for the referred population. The
+panel-row rhos printed on the cross-check page predate this. After changing the rule: rewrite
+`edf_features.paf_post`, run `tools/reference_ranges.py`, then `tools/freeze_models.py`.
 
 **Cover page** (`page_cover`, page 1): the same scores in plain words, a headline count,
 and "What these findings have been seen with" (`ASSOCIATIONS`). The associations are

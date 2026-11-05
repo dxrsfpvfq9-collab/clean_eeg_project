@@ -61,6 +61,42 @@ def _paf(f, p):
     return float(np.sum(fm[lo:hi] * pm[lo:hi]) / np.sum(pm[lo:hi]))
 
 
+def posterior_peak(f, p, min_height=1.5, min_width=0.25):
+    """Alpha peak of a posterior spectrum, or None. The 1/f slope is removed first, so a
+    shoulder on a falling spectrum is not a peak. Local maxima in 7-13 Hz only (not the window
+    edges); a one-bin spike (width at half height under min_width Hz) is passed over. The
+    tallest left must stand min_height times over the slope.
+
+    Tuned on half the clients against the doctor's stated frequency, checked on the other half
+    (research/validation_2026/report_assessment/). Do not widen min_width: real alpha is often
+    under 0.75 Hz wide, and a 0.75 Hz test moved more studies away from the doctor than towards."""
+    fit = ((f >= 2) & (f <= 7)) | ((f >= 14) & (f <= 30))
+    b = np.polyfit(np.log(f[fit]), np.log(p[fit] + 1e-12), 1)
+    ok = f > 0
+    h = np.full(len(f), 1.0)
+    h[ok] = np.exp(np.log(p[ok] + 1e-12) - np.polyval(b, np.log(f[ok])))
+    idx = np.where((f >= 7) & (f <= 13))[0]
+    best = None
+    for k in idx[1:-1]:
+        if not (h[k] >= h[k - 1] and h[k] > h[k + 1]) or h[k] < min_height:
+            continue
+        half = 1 + (h[k] - 1) / 2
+        lo = k
+        while lo > 0 and h[lo - 1] >= half:
+            lo -= 1
+        hi = k
+        while hi < len(f) - 1 and h[hi + 1] >= half:
+            hi += 1
+        if f[hi] - f[lo] < min_width:
+            continue
+        if best is None or h[k] > h[best]:
+            best = k
+    if best is None:
+        return None
+    w = h[best - 1:best + 2]
+    return float(np.sum(f[best - 1:best + 2] * w) / np.sum(w))
+
+
 def chan_power(path):
     """{site: dict(abs_<band>, rel_<band>, total, tbr, paf, line60)} for every
     10-20 site present. abs in uV^2, rel as % of 1-45 Hz."""
@@ -80,6 +116,7 @@ def chan_power(path):
             row["rel_" + name] = 100 * a / tot if tot > 0 else float("nan")
         row["tbr"] = row["abs_theta"] / row["abs_beta"] if row["abs_beta"] > 0 else float("nan")
         row["paf"] = _paf(f, p)
+        row["_f"], row["_spec"] = f, p      # for summary()'s posterior peak; not stored
         # mains share; NaN when the sampling rate cannot see 60 Hz
         row["line60"] = (100 * _power(f, p, 58, 62) / _power(f, p, 1, 80)
                          if fs / 2 > 70 else float("nan"))
@@ -92,12 +129,14 @@ def summary(cp):
     def mean(sites, key):
         v = [cp[s][key] for s in sites if s in cp and np.isfinite(cp[s][key])]
         return float(np.mean(v)) if v else None
+    post = [s for s in ("O1", "O2", "P3", "P4", "PZ") if s in cp]
     return dict(
         n_sites=len(cp),
         tbr_cz=cp["CZ"]["tbr"] if "CZ" in cp else None,
         tbr_fz=cp["FZ"]["tbr"] if "FZ" in cp else None,
         tbr_mean=mean(SITES, "tbr"),
-        paf_post=mean(["O1", "O2", "P3", "P4", "PZ"], "paf"),
+        paf_post=(posterior_peak(cp[post[0]]["_f"], np.mean([cp[s]["_spec"] for s in post], axis=0))
+                  if post else None),
         rel_alpha_post=mean(["O1", "O2", "P3", "P4", "PZ"], "rel_alpha"),
         rel_theta_front=mean(["F3", "FZ", "F4"], "rel_theta"),
         rel_delta_mean=mean(SITES, "rel_delta"),
