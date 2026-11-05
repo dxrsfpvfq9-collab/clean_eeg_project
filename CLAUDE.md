@@ -634,6 +634,24 @@ clinical abnormality 0.42-0.57, drowsiness 0.44-0.53, uncommon links 0.43-0.56; 
 stray results (paroxysmal EC theta 0.24, PDR slow EC beta 0.31 and EO theta 0.69) rest
 on 9-14 positives across 24 tests and do not agree between conditions.
 
+**Drowsiness** (`tools/vigilance_features.py`, table `vigil_features`;
+`tools/drowsiness_model.py [--detail]`; results
+`research/validation_2026/out/DROWSINESS_MODEL.md`). Whole-recording averages cannot
+see an event in time, so features are per 4 s epoch: true time moments, posterior alpha
+dropout, theta/alpha trend and spread, anterior alpha shift, alpha-peak drift, slow eye
+movement, blinks, spindle-band bursts. The doctor's comment is per report: identical for
+EC and EO in 346 of 346 sessions, so an EO file is often labelled from EC drowsiness.
+CV by client, age always in the model (age alone 0.57). EC: panel moments 0.59, all 48
+panel rows 0.63, EDF power 0.67, time-resolved 0.68, **EDF power + time-resolved 0.71
+(CI 0.66-0.76)**; EO best 0.66. Top score third 73% reader-drowsy, bottom 34% (EC);
+wording-based: described vs none 0.74. Small panels chosen inside folds: 0.68 EC with
+6 features (late_ta, alpha_iqr, ta_sd, ant_late, slope_ta, drop_frac). On the report only
+as a soft cover row, eyes-closed only (`drowsy_note`, fitted without the client, never
+counted as a result that stands out): "Possible" = top third of out-of-client scores.
+Checked as a report calls it on 148 random labelled EC studies: AUC 0.72, 30% flagged,
+reader noted drowsiness in 76% of "Possible" vs 46% of "No clear signs" -- so "no clear
+signs" does not rule it out. An earlier n=60 draw read 0.82: sampling noise.
+
 **Non-EEG channels are dropped at read** (`edftotextbynameplotproc.py`, right
 after `read_raw_edf`). An `HR` (heart-rate) channel used to stop the montage
 sort with `'HR' is not in list` -- no panel, on the servers too (those studies
@@ -646,6 +664,12 @@ dropped `Fz`/`Cz`/`Pz` and broke 3 studies until it was corrected. Dev only;
 the servers' deploy set does not have it.
 
 ## EDF Analysis Report (prototype, `tools/edf_report.py`)
+
+**Cover page** (`page_cover`, page 1): the same scores in plain words, a headline count,
+and "What these findings have been seen with" (`ASSOCIATIONS`). The associations are
+written from general textbook / review knowledge and await clinician review. Wording is
+deliberately "seen in association with", never "consistent with" or a diagnosis.
+The measures page below is now page 2.
 
 Page 1 from the EDF alone (`edf_power`, no ICA, a few seconds), scored against
 the `ref_models` in the source database for the client's age and condition

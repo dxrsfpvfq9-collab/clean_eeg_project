@@ -1,7 +1,11 @@
-"""EDF analysis report: age-adjusted electrode-space findings on one page,
-plus the cascade's source pages when a sidecar exists.
+"""EDF analysis report: a plain-language cover, age-adjusted electrode-space
+findings on one page, plus the cascade's source pages when a sidecar exists.
 
-Page 1 is computed from the EDF alone (tools/edf_power.py: median-Welch band
+The cover (page_cover) restates the scores of the pages behind it in plain words
+and lists what flagged findings have been seen in association with
+(ASSOCIATIONS: textbook / review-level, never a diagnosis).
+
+The EEG measures page is computed from the EDF alone (tools/edf_power.py: median-Welch band
 power per 10-20 site, no ICA), scored against the age-by-condition reference
 models in the source database (tools/reference_ranges.py):
 
@@ -163,7 +167,309 @@ def quality(cp, n_labels):
     return grade, col, detail
 
 
-# ------------------------------------------------------------------ page 1
+# ------------------------------------------------------------------ cover page
+# feature -> plain name, what it is, higher sentence, lower sentence
+PLAIN = {
+    "paf_post": ("Speed of the main resting rhythm", "the main rhythm at the back of the head",
+                 "Faster than usual for this age.", "Slower than usual for this age."),
+    "tbr_cz": ("Slow-to-fast balance", "slow compared with fast activity at the top of the head",
+               "More slow activity, relative to fast, than usual.",
+               "Less slow activity, relative to fast, than usual."),
+    "rel_alpha_post": ("Resting rhythm strength", "how much of the back-of-head activity is resting rhythm",
+                       "Stronger than usual for this age.", "Weaker than usual for this age."),
+    "rel_theta_front": ("Slow activity at the front", "slower activity over the front of the head",
+                        "More than usual for this age.", "Less than usual for this age."),
+    "alpha_asym_f4f3": ("Left-right balance at the front", "resting rhythm on the right vs the left front",
+                        "More resting rhythm on the right than usual.",
+                        "More resting rhythm on the left than usual."),
+    "rel_hibeta_mean": ("Very fast activity", "the fastest activity measured here (21-30 cycles per second)",
+                        "More than usual for this age.", "Less than usual for this age."),
+}
+# (feature or band column, direction) -> (finding, seen in association with, strength of evidence).
+# Textbook / review-level associations, for a clinician to weigh. Never a diagnosis.
+ASSOCIATIONS = {
+    ("paf_post", -1): ("Slower main rhythm",
+                       "drowsiness, sedating medication, cognitive decline or dementia, and "
+                       "brain injury or other medical conditions affecting the brain.",
+                       "well established; matched reviewers' 'slow for age' calls in our data"),
+    ("tbr_cz", 1): ("Higher slow-to-fast balance",
+                    "drowsiness, and attention problems (ADHD). Group studies differ widely and it "
+                    "does not identify ADHD in an individual (Arns et al. 2013).",
+                    "mixed"),
+    ("rel_alpha_post", -1): ("Weaker resting rhythm",
+                             "drowsiness, tension or anxiety, and older age; also expected with eyes open.",
+                             "moderate, not specific"),
+    ("rel_alpha_post", 1): ("Stronger resting rhythm",
+                            "relaxed wakefulness; raised in some studies of depression.",
+                            "mixed"),
+    ("rel_theta_front", 1): ("More slow activity at the front",
+                             "drowsiness, sedating medication, attention problems, and some "
+                             "mood or cognitive complaints.",
+                             "moderate, not specific; matched reviewers' abnormality comments in our data"),
+    ("alpha_asym_f4f3", -1): ("More resting rhythm on the left front",
+                              "low mood and depression in research studies; pooled results do not "
+                              "support it as a test for depression (van der Vinne et al. 2017).",
+                              "research only, weak"),
+    ("rel_hibeta_mean", 1): ("More very fast activity",
+                             "muscle tension, benzodiazepine or barbiturate use, and "
+                             "anxiety, hyperarousal or poor sleep.",
+                             "established for these medications; otherwise moderate"),
+    ("rel_delta", 1): ("More very slow activity in several areas",
+                       "drowsiness, sedating medication, brain injury and other medical conditions "
+                       "affecting the brain. At the front only, usually eye movement.",
+                       "well established, not specific"),
+    ("rel_theta", 1): ("More slow activity in several areas",
+                       "drowsiness, sedating medication, and attention or cognitive complaints.",
+                       "moderate, not specific"),
+    ("rel_alpha", -1): ("Less resting rhythm in several areas",
+                        "drowsiness, tension or anxiety, and eyes open.",
+                        "moderate, not specific"),
+    ("rel_beta", 1): ("More fast activity in several areas",
+                      "benzodiazepine or barbiturate use, muscle tension, and anxiety or hyperarousal.",
+                      "established for these medications; otherwise moderate"),
+}
+BAND_PLAIN = {"rel_delta": "very slow", "rel_theta": "slow", "rel_alpha": "resting-rhythm",
+              "rel_beta": "fast"}
+
+
+def site_z(models, age, cp, col_):
+    """Age-adjusted z per 10-20 site for one band; 0 where unavailable."""
+    z = []
+    for s in TOPO_SITES:
+        zz = score(models, f"{s}.{col_}", age, cp[s][col_]) if s in cp else (None,)
+        z.append(zz[0] if zz[0] is not None else 0.0)
+    return z
+
+
+def group_stats(store, cond):
+    """(share of this condition's studies with >= 1 of the six measures at |z| >= 2,
+    median number of panel rows out of range). Nones when unavailable."""
+    con = sqlite3.connect(os.path.join(store, "sources.db"))
+    feats = [t[0] for t in TILES]
+    row = con.execute(
+        "SELECT AVG(h) FROM (SELECT MAX(ABS(r.z) >= ?) h FROM ref_z r JOIN studies s ON s.id = r.study_id "
+        f"WHERE s.cond = ? AND r.feature IN ({','.join('?' * len(feats))}) GROUP BY r.study_id)",
+        [Z_FLAG, cond] + feats).fetchone()
+    counts = [r[0] for r in con.execute(
+        "SELECT SUM(ABS(p.z) >= ?) FROM panel p JOIN studies s ON s.id = p.study_id "
+        "WHERE s.cond = ? GROUP BY p.study_id", (Z_FLAG, cond))]
+    con.close()
+    return row[0], (float(np.median(counts)) if counts else None)
+
+
+def plain_quality(grade, detail):
+    if grade == "Good":
+        return "Recording quality: good. No significant problems were found."
+    why = []
+    if "missing" in detail:
+        why.append("some electrodes gave no usable signal")
+    if "muscle" in detail:
+        why.append("muscle activity may have affected the fast measures")
+    if "electrode contact" in detail:
+        why.append("strong electrical interference suggests a poor electrode contact")
+    return (f"Recording quality: {grade.lower()}. " + "; ".join(why).capitalize()
+            + ". Treat these results with extra caution.")
+
+
+def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, ctyp, stats, contents,
+               drowsy=None):
+    """Plain-language summary. Reuses the same scores as the pages behind it."""
+    import matplotlib.pyplot as plt
+    sm = edf_power.summary(cp)
+    fig = plt.figure(figsize=(8.5, 11))
+    L, R = 0.06, 0.94
+    fig.text(L, 0.965, "EEG Report: Summary", fontsize=18, weight="bold", color="#1a1a1a")
+    fig.text(L, 0.942, label, fontsize=9, color="0.25")
+    fig.text(L, 0.926, f"Age {age if age is not None else 'unknown'}   ·   "
+             f"{'Eyes closed' if cond == 'EC' else 'Eyes open'}   ·   Recorded {rec or 'unknown'}",
+             fontsize=9, color="0.25")
+
+    # --- score everything first: the headline needs the count
+    rows, flagged = [], []
+    for f, *_ in TILES:
+        name, what, hi, lo = PLAIN[f]
+        v = sm.get(f)
+        z, p, _rng = score(models, f, age, v)
+        if f == "paf_post" and v is None:
+            rows.append((name, "No clear main rhythm was found.", "Not found", "#b26a00", None))
+            continue
+        if z is None:
+            rows.append((name, what.capitalize() + ".", "No comparison", "#777", None))
+            continue
+        if abs(z) >= Z_FLAG:
+            flagged.append((abs(z), (f, 1 if z > 0 else -1), hi if z > 0 else lo))
+        state = ("Typical" if abs(z) < 1.5 else "Slightly " if abs(z) < Z_FLAG else "")
+        if state != "Typical":
+            state += "higher" if z > 0 else "lower"
+        rows.append((name, (hi if z > 0 else lo) if abs(z) >= 1.5 else what.capitalize() + ".",
+                     state.capitalize(), zcolor(z), p))
+    if drowsy:      # a soft note: never counted as a result that stands out
+        if drowsy["possible"]:
+            rows.append(("Signs of drowsiness",
+                         "May suggest drowsiness. A reader noted it in about "
+                         f"{10 * drowsy['rate']:.0f} of 10 recordings scoring this high.",
+                         "Possible", "#b26a00", None))
+        else:
+            rows.append(("Signs of drowsiness",
+                         "No clear pattern of drowsiness, though this measure can miss it.",
+                         "No clear signs", "#2e7d32", None))
+    assoc_keys = [(k, s) for _, k, s in sorted(flagged, key=lambda t: -t[0])]
+    n_stand = len(flagged)
+    if age is not None:
+        for col_, _t in MAP_BANDS:
+            zs = site_z(models, age, cp, col_)
+            hot = [s for s, v in zip(TOPO_SITES, zs) if abs(v) >= Z_FLAG]
+            if len(hot) >= 4:
+                d = 1 if np.mean([v for v in zs if abs(v) >= Z_FLAG]) > 0 else -1
+                n_stand += 1
+                assoc_keys.append(((col_, d), f"{BAND_PLAIN[col_].capitalize()} activity is "
+                                   f"{'high' if d > 0 else 'low'} at {len(hot)} of 19 sites."))
+
+    if data is not None:
+        comps = data["comps"]
+        tot = sum(c["pct"] for c in comps) or 1.0
+        brain = 100 * sum(c["pct"] for c in comps if c["accept"]) / tot
+        if typ:
+            ap = typ["atyp_pctile"]
+            st, col = (("Unusual", "#c62828") if ap >= 95 else ("Somewhat unusual", "#b26a00")
+                       if ap >= 85 else ("Typical", "#2e7d32"))
+            n_stand += ap >= 95
+        else:
+            st, col, ap = "No comparison", "#777", None
+        # no bar: for this score only the top end means unusual
+        txt = (f"About {brain:.0f}% of the recording was brain activity; the rest was removed "
+               "as blinks, muscle or similar.")
+        if brain < 50:
+            txt = (f"Only about {brain:.0f}% of the recording was brain activity, so this result is "
+                   "less certain. The rest was removed as blinks, muscle or similar.")
+            col = "#b26a00" if col == "#2e7d32" else col
+        rows.append(("Where the activity comes from", txt,
+                     "Mix: " + st.lower() if st != "No comparison" else st, col, None))
+    if ctyp:
+        pcs = {b: v["pctile"] for b, v in ctyp["bands"].items() if v["pctile"] is not None}
+        hi_b = [b.lower() for b, p in pcs.items() if p >= 95]
+        lo_b = [b.lower() for b, p in pcs.items() if p <= 5]
+        n_stand += bool(hi_b or lo_b)
+        n_unc = sum(v["n_uncommon"] for v in ctyp["bands"].values())
+        txt = []
+        if hi_b:
+            txt.append("Stronger than usual in " + ", ".join(hi_b) + ".")
+        if lo_b:
+            txt.append("Weaker than usual in " + ", ".join(lo_b) + ".")
+        if not txt:
+            txt.append("How much brain areas rise and fall together.")
+        if n_unc:
+            txt.append(f"{n_unc} uncommon link{'s' if n_unc > 1 else ''} between areas.")
+        st, col = ("Unusual", "#c62828") if hi_b or lo_b else ("Typical", "#2e7d32")
+        rows.append(("How brain areas work together", " ".join(txt), st, col, None))
+    if panel:
+        z = np.array([np.nan if v is None else v for v in panel["z"]], float)
+        if panel["values"][1] is not None and abs(panel["values"][1] - 1000) < 1e-6:
+            z[1] = np.nan
+        n_oob = int(np.nansum(np.abs(z) >= Z_FLAG))
+        mid = f" The middle person in this group has {stats[1]:.0f}." if stats[1] is not None else ""
+        adult = (" Its reference is adults with eyes closed, so more are expected here."
+                 if cond == "EO" or (age is not None and age < 18) else "")
+        rows.append(("Brain Panel", f"{n_oob} of 48 measures were out of range.{mid}{adult}",
+                     f"{n_oob} of 48", "#555", None))
+
+    # --- headline
+    grade, _c, detail = quality(cp, None)
+    if age is None:
+        head = "Age was not available, so nothing could be compared with others of the same age."
+    elif n_stand == 0:
+        head = "Nothing in this recording stands out for someone of this age."
+    elif n_stand == 1:
+        head = "One result stands out for someone of this age."
+    else:
+        head = f"{n_stand} results stand out for someone of this age."
+    box = "#fdf1f0" if n_stand else "#eef6ef"
+    fig.patches.append(plt.Rectangle((L, 0.846), R - L, 0.064, transform=fig.transFigure,
+                                     facecolor=box, edgecolor="none"))
+    fig.text(L + 0.015, 0.889, head, fontsize=12.5, weight="bold", color="#1a1a1a", va="center")
+    fig.text(L + 0.015, 0.862, _wrap(plain_quality(grade, detail), 112), fontsize=8.2, color="0.2", va="center")
+
+    # --- at a glance
+    y = 0.822
+    fig.text(L, y, "Results at a glance", fontsize=11, weight="bold", color="#1a1a1a")
+    fig.text(R, y, "bar: typical range for this age; mark: this recording", fontsize=7,
+             color="0.4", ha="right")
+    y -= 0.014
+    fig.lines.append(plt.Line2D([L, R], [y, y], transform=fig.transFigure, color="0.7", lw=0.6))
+    step = min(0.044, 0.385 / max(len(rows), 1))
+    y -= step * 0.42
+    for name, txt, st, col, p in rows:
+        fig.text(L, y + 0.007, name, fontsize=8.5, weight="bold", color="#1a1a1a", va="center")
+        fig.text(L, y - 0.008, _wrap(txt, 104).split("\n")[0], fontsize=7.2, color="0.3", va="center")
+        if len(_wrap(txt, 104).split("\n")) > 1:
+            fig.text(L, y - 0.019, _wrap(txt, 104).split("\n")[1], fontsize=7.2, color="0.3", va="center")
+        fig.text(0.72, y, st, fontsize=8.2, weight="bold", color=col, va="center")
+        if p is not None:
+            x0, w = 0.85, R - 0.85
+            fig.patches.append(plt.Rectangle((x0, y - 0.003), w, 0.006, transform=fig.transFigure,
+                                             facecolor="0.88", edgecolor="none"))
+            fig.patches.append(plt.Rectangle((x0 + w * 0.025, y - 0.003), w * 0.95, 0.006,
+                                             transform=fig.transFigure, facecolor="0.72", edgecolor="none"))
+            xp = x0 + w * min(max(p, 0), 100) / 100
+            fig.lines.append(plt.Line2D([xp, xp], [y - 0.008, y + 0.008], transform=fig.transFigure,
+                                        color=col, lw=2.5))
+        y -= step
+
+    # --- seen in association with
+    y -= 0.012
+    fig.text(L, y, "What these findings have been seen with", fontsize=11, weight="bold", color="#1a1a1a")
+    y -= 0.018
+    shown = [(ASSOCIATIONS[k], s) for k, s in assoc_keys if k in ASSOCIATIONS]
+    others = len(assoc_keys) - len(shown)
+    if not n_stand:
+        fig.text(L, y, "No result stands out, so there is nothing to note here.", fontsize=8, color="0.3")
+        y -= 0.018
+    elif not assoc_keys:
+        fig.text(L, y, "The result that stands out here (brain sources or coupling) has no well-described "
+                 "link to symptoms or conditions.", fontsize=8, color="0.3")
+        y -= 0.018
+    for (finding, seen, strength), _s in shown[:4]:
+        lines = _wrap("Has been seen in association with " + seen, 112).split("\n")
+        fig.text(L, y, finding, fontsize=8.2, weight="bold", color="#1a1a1a")
+        fig.text(R, y, f"Evidence: {strength}", fontsize=6.6, color="0.4", ha="right", style="italic")
+        y -= 0.014
+        for ln in lines:
+            fig.text(L, y, ln, fontsize=7.4, color="0.2")
+            y -= 0.0125
+        y -= 0.004
+    extra = max(len(shown) - 4, 0) + others
+    if extra:
+        fig.text(L, y, f"+ {extra} more finding(s) with no well-described association, or not shown here; "
+                 "see the pages behind.", fontsize=7.2, color="0.4")
+        y -= 0.014
+    if assoc_keys:
+        fig.text(L, y, _wrap("These are patterns reported in groups of people. They also occur in people with no "
+                 "symptoms, and they do not show that this person has any of these conditions.", 118),
+                 fontsize=7.4, color="#8a4b00", va="top")
+        y -= 0.03
+
+    # --- keep in mind
+    y -= 0.012
+    fig.text(L, y, "Keep in mind", fontsize=11, weight="bold", color="#1a1a1a")
+    y -= 0.016
+    usual = (f"About {100 * stats[0]:.0f} in 100 people in this group have at least one of the six rhythm "
+             "measures stand out, so one result alone is common. " if stats[0] is not None else "")
+    para = (usual + "\"Typical\" means compared with other people of this age referred for EEG screening, "
+            "not with people known to be healthy. The sources and coupling results are descriptive: in our "
+            "testing they did not reliably match doctors' comments. This is screening information for a "
+            "qualified practitioner, not a diagnosis.")
+    fig.text(L, y, _wrap(para, 122), fontsize=7.4, color="0.2", va="top", linespacing=1.3)
+
+    # --- contents
+    fig.text(L, 0.045, "In this report:  " + "   ·   ".join(f"p.{p} {t}" for p, t in contents),
+             fontsize=7.2, color="0.35")
+    if notes:
+        fig.text(L, 0.030, _wrap(" ".join(notes), 130), fontsize=6.8, color="#b26a00", va="top")
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+# ------------------------------------------------------------------ page 2: EDF
 def zcolor(z):
     if z is None:
         return "#9e9e9e"
@@ -248,10 +554,7 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
     im = None
     for k, (col_, title) in enumerate(MAP_BANDS):
         ax = fig.add_axes([0.06 + k * 0.225, 0.405, 0.2, 0.16])
-        z = []
-        for s in TOPO_SITES:
-            zz = score(models, f"{s}.{col_}", age, cp[s][col_]) if s in cp else (None,)
-            z.append(zz[0] if zz[0] is not None else 0.0)
+        z = site_z(models, age, cp, col_)
         im, _ = mne.viz.plot_topomap(np.array(z), info, axes=ax, show=False, cmap="RdBu_r",
                                      vlim=(-3, 3), contours=0, sensors=True)
         ax.set_title(title, fontsize=8)
@@ -528,33 +831,48 @@ def main():
     matplotlib.use("Agg")
     from matplotlib.backends.backend_pdf import PdfPages
     sidecar = a.sidecar or (a.edf[:-4] + ".sources.npz")
-    with PdfPages(out) as pdf:
-        page_edf(pdf, deidentify_label(base), age, cond, rec, cp, models, notes)
-        panel = find_panel(a.edf, a.panel)
-        if panel:
-            page_panel(pdf, deidentify_label(base), age, cond, panel, cp, models)
-        else:
-            print("no Brain Panel found -- cross-check page skipped")
-        if os.path.exists(sidecar):
-            import source_summary as ss
-            data = ss.load(sidecar)
-            typ = None
+    # everything the cover summarizes is computed before the first page is written
+    panel = find_panel(a.edf, a.panel)
+    if not panel:
+        print("no Brain Panel found -- cross-check page skipped")
+    ss = data = typ = net = ctyp = None
+    if os.path.exists(sidecar):
+        import source_summary as ss
+        data = ss.load(sidecar)
+        try:
+            import source_norms
+            typ = source_norms.typicality(data["comps"], age, cond, a.store,
+                                          client=patient_hash(a.edf))
+        except Exception as exc:      # no database / no reference: page without peers
+            print("source typicality unavailable:", exc)
+        if data["sources"] is not None:
+            net = ss.analyze_networks(data)
             try:
-                import source_norms
-                typ = source_norms.typicality(data["comps"], age, cond, a.store,
-                                              client=patient_hash(a.edf))
-            except Exception as exc:      # no database / no reference: page without peers
-                print("source typicality unavailable:", exc)
+                import coupling_norms
+                ctyp = coupling_norms.coupling_typicality(*net, age, cond, a.store,
+                                                          client=patient_hash(a.edf))
+            except Exception as exc:  # no database / no reference: page without norms
+                print("coupling norms unavailable:", exc)
+    stats = group_stats(a.store, cond)
+    drowsy = None
+    try:
+        import drowsiness_model
+        drowsy = drowsiness_model.drowsy_note(a.edf, age, cond, cp, a.store, client=patient_hash(a.edf))
+    except Exception as exc:          # no database / no reference: cover without the note
+        print("drowsiness note unavailable:", exc)
+    contents = ["EEG measures"] + (["Brain Panel"] if panel else []) + (["brain sources"] if data else []) \
+        + (["brain networks"] if net else [])
+    contents = [(k + 2, t) for k, t in enumerate(contents)]
+
+    with PdfPages(out) as pdf:
+        label = deidentify_label(base)
+        page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, ctyp, stats, contents, drowsy)
+        page_edf(pdf, label, age, cond, rec, cp, models, notes)
+        if panel:
+            page_panel(pdf, label, age, cond, panel, cp, models)
+        if data is not None:
             ss.page_sources(data, pdf, typ)
-            if data["sources"] is not None:
-                net = ss.analyze_networks(data)
-                ctyp = None
-                try:
-                    import coupling_norms
-                    ctyp = coupling_norms.coupling_typicality(*net, age, cond, a.store,
-                                                              client=patient_hash(a.edf))
-                except Exception as exc:      # no database / no reference: page without norms
-                    print("coupling norms unavailable:", exc)
+            if net is not None:
                 ss.page_networks(data, pdf, net, ctyp)
     print("wrote", out)
 
