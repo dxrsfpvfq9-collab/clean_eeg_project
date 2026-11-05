@@ -710,6 +710,16 @@ catches only 3 of 14 doctor-slow, whose peaks are mostly not low for the referre
 panel-row rhos printed on the cross-check page predate this. After changing the rule: rewrite
 `edf_features.paf_post`, run `tools/reference_ranges.py`, then `tools/freeze_models.py`.
 
+**Report changes after reading the 100 (2026-11-05).** Panel discriminant likelihoods appear only with
+`--internal`: they read High on 44-57 of 95 reports per category, often against the cover, and do not
+track the doctor. The brain share is ICA variance, not time, and is worded so. Under 50% (`BRAIN_LOW`)
+adds a sentence that the source results are less certain; under 25% (`BRAIN_MIN`) also drops the source
+verdict, coupling and the networks page. Both cuts are judgement, not fitted. It was tried in the
+quality grade and taken out: half of the 100 stopped being Good, and at under 25% the doctor used heavy
+artifact words in 1 of 13 (share vs those words AUC 0.59). `SLOW_CORE`/`SLOW_JOINS`: slowed
+rhythm, theta/beta, frontal and widespread theta count as one result, since a rhythm under 8 Hz raises
+them together; the rows still show each. `--summary` keeps `n_raw` (ungrouped) and `assoc` (all).
+
 **Cover page** (`page_cover`, page 1): the same scores in plain words, a headline count,
 and "What these findings have been seen with" (`ASSOCIATIONS`). The associations are
 written from general textbook / review knowledge and await clinician review. Wording is

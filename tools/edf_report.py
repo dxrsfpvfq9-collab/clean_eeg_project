@@ -57,6 +57,12 @@ CORPUS = r"C:\Users\tcollura\Dropbox\STS EEG Quality Assurance Reviews"
 Z_FLAG = 2.0
 SUMMARY = {}          # what the cover said, for --summary: scores only, no names
 MODEL_STAMP = ""      # set in main: which reference models scored this report
+BRAIN_LOW = 50.0      # % of ICA variance kept as brain: under this, the source results are caveated
+BRAIN_MIN = 25.0      # under this, sources and coupling are not scored at all
+# Findings that can share one cause: a slower rhythm drops under the 8 Hz band edge and raises theta,
+# theta/beta and frontal theta together. They count as one result. Low alpha joins only alongside one.
+SLOW_CORE = {("paf_post", -1), ("tbr_cz", 1), ("rel_theta_front", 1), ("rel_theta", 1)}
+SLOW_JOINS = {("rel_alpha_post", -1), ("rel_alpha", -1)}
 LINE_BAD = 50.0       # % of 1-80 Hz power at the worst site
 MAP_BANDS = [("rel_delta", "Delta 1-4 Hz"), ("rel_theta", "Theta 4-8 Hz"),
              ("rel_alpha", "Alpha 8-13 Hz"), ("rel_beta", "Beta 13-21 Hz")]
@@ -66,7 +72,7 @@ TILES = [
     ("paf_post", "Alpha peak frequency", "{:.1f} Hz",
      "Posterior alpha peak is fast for age.",
      "Posterior alpha peak is slow for age (posterior dominant rhythm slowing).",
-     "In the QA corpus a low alpha-peak z matched the reader's 'PDR slow for age' "
+     "In our review data a low alpha-peak z matched the reader's 'PDR slow for age' "
      "call (AUC 0.84)."),
     ("tbr_cz", "Theta/beta at Cz", "{:.2f}",
      "Theta/beta ratio at Cz is high for age.",
@@ -88,7 +94,7 @@ TILES = [
      "activation).",
      "More alpha over F3 than F4 than is usual for age (relatively less left-frontal "
      "activation).",
-     "ln(F4) - ln(F3) alpha power. A research marker; not validated against the QA labels."),
+     "ln(F4) - ln(F3) alpha power. A research marker; not validated against doctors' comments."),
     ("rel_hibeta_mean", "Fast activity 21-30 Hz", "{:.1f} %",
      "Fast (21-30 Hz) activity is high for age -- muscle tension, medication "
      "(e.g. benzodiazepines) or hyperarousal.",
@@ -151,8 +157,18 @@ def score(models, feature, age, value):
     return float(z[0]), float(p[0]), rng
 
 
-def quality(cp, n_labels):
-    """(grade, colour, detail) from the EDF alone."""
+def brain_share(data):
+    """% of ICA variance in the components kept as brain, or None without a sidecar."""
+    if data is None:
+        return None
+    tot = sum(c["pct"] for c in data["comps"]) or 1.0
+    return 100 * sum(c["pct"] for c in data["comps"] if c["accept"]) / tot
+
+
+def quality(cp):
+    """(grade, colour, detail) from the EDF alone. The brain share stays out of the grade: at under
+    25% the doctor used heavy artifact words in 1 of 13 of the newest studies, and the EDF measures
+    are median-based. It gets its own sentence (plain_quality) instead."""
     line = max((cp[s]["line60"] for s in cp if np.isfinite(cp[s]["line60"])), default=np.nan)
     missing = [s for s in TOPO_SITES if s not in cp]
     hib = np.nanmean([cp[s]["rel_hibeta"] + cp[s]["rel_gamma"] for s in cp]) if cp else np.nan
@@ -264,9 +280,11 @@ def group_stats(store, cond):
     return row[0], (float(np.median(counts)) if counts else None)
 
 
-def plain_quality(grade, detail):
+def plain_quality(grade, detail, brain=None):
+    low = brain is not None and brain < BRAIN_LOW
+    source = " Much of the signal was set aside as artifact, so the source results are less certain." if low else ""
     if grade == "Good":
-        return "Recording quality: good. No significant problems were found."
+        return ("Recording quality: good." + source) if low else "Recording quality: good. No significant problems were found."
     why = []
     if "missing" in detail:
         why.append("some electrodes gave no usable signal")
@@ -275,7 +293,7 @@ def plain_quality(grade, detail):
     if "electrode contact" in detail:
         why.append("strong electrical interference suggests a poor electrode contact")
     return (f"Recording quality: {grade.lower()}. " + "; ".join(why).capitalize()
-            + ". Treat these results with extra caution.")
+            + ". Treat these results with extra caution." + source)
 
 
 def stamp(fig):
@@ -337,10 +355,8 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
                 assoc_keys.append(((col_, d), f"{BAND_PLAIN[col_].capitalize()} activity is "
                                    f"{'high' if d > 0 else 'low'} at {len(hot)} of 19 sites."))
 
+    brain = brain_share(data)
     if data is not None:
-        comps = data["comps"]
-        tot = sum(c["pct"] for c in comps) or 1.0
-        brain = 100 * sum(c["pct"] for c in comps if c["accept"]) / tot
         if typ:
             ap = typ["atyp_pctile"]
             st, col = (("Unusual", "#c62828") if ap >= 95 else ("Somewhat unusual", "#b26a00")
@@ -349,14 +365,17 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
         else:
             st, col, ap = "No comparison", "#777", None
         # no bar: for this score only the top end means unusual
-        txt = (f"About {brain:.0f}% of the recording was brain activity; the rest was removed "
-               "as blinks, muscle or similar.")
-        if brain < 50:
-            txt = (f"Only about {brain:.0f}% of the recording was brain activity, so this result is "
-                   "less certain. The rest was removed as blinks, muscle or similar.")
+        txt = f"About {brain:.0f}% of the signal's strength came from brain sources; the rest was set aside as artifact."
+        label_ = "Mix: " + st.lower() if st != "No comparison" else st
+        if brain < BRAIN_MIN:
+            txt = (f"Only about {brain:.0f}% of the signal's strength came from brain sources, too little to "
+                   "compare. The rest was set aside as blinks, muscle or similar.")
+            label_, col = "Too little signal", "#b26a00"
+        elif brain < BRAIN_LOW:
+            txt = (f"Only about {brain:.0f}% of the signal's strength came from brain sources, so this result "
+                   "is less certain. The rest was set aside as blinks, muscle or similar.")
             col = "#b26a00" if col == "#2e7d32" else col
-        rows.append(("Where the activity comes from", txt,
-                     "Mix: " + st.lower() if st != "No comparison" else st, col, None))
+        rows.append(("Where the activity comes from", txt, label_, col, None))
     if ctyp:
         pcs = {b: v["pctile"] for b, v in ctyp["bands"].items() if v["pctile"] is not None}
         hi_b = [b.lower() for b, p in pcs.items() if p >= 95]
@@ -379,17 +398,40 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
         if panel["values"][1] is not None and abs(panel["values"][1] - 1000) < 1e-6:
             z[1] = np.nan
         n_oob = int(np.nansum(np.abs(z) >= Z_FLAG))
-        mid = f" The middle person in this group has {stats[1]:.0f}." if stats[1] is not None else ""
+        mid = f" Half of people in this group have {stats[1]:.0f} or fewer." if stats[1] is not None else ""
         adult = (" Its reference is adults with eyes closed, so more are expected here."
                  if cond == "EO" or (age is not None and age < 18) else "")
+        many = n_oob >= max(8, 2 * (stats[1] or 0))
+        if many:
+            adult = " Its one adult eyes-closed reference differs from this report's comparison by age; see p.3."
         rows.append(("Brain Panel", f"{n_oob} of 48 measures were out of range.{mid}{adult}",
-                     f"{n_oob} of 48", "#555", None))
+                     f"{n_oob} of 48", "#b26a00" if many else "#555", None))
+
+    # --- findings that can share one cause count once
+    n_raw, raw_keys = n_stand, [f"{k[0]}:{k[1]}" for k, _s in assoc_keys]
+    slow = [k for k, _s in assoc_keys if k in SLOW_CORE]
+    if slow:
+        slow += [k for k, _s in assoc_keys if k in SLOW_JOINS]
+    if len(slow) >= 2:
+        n_stand -= len(slow) - 1
+        first = next(i for i, (k, _s) in enumerate(assoc_keys) if k in slow)
+        rep_k = assoc_keys[first][0]
+        also = [ASSOCIATIONS[k][0].lower() for k in slow if k != rep_k]
+        joined = (rep_k, "group")
+        finding, seen, strength = ASSOCIATIONS[rep_k]
+        grouped = ("Slower activity, seen in " + str(len(slow)) + " measures", seen
+                   + " Also seen here: " + ", ".join(also) + ". These can share one cause, so they count as one result.",
+                   strength)
+        assoc_keys = [(joined, "") if i == first else a for i, a in enumerate(assoc_keys) if a[0] not in slow or i == first]
+    else:
+        joined = grouped = None
 
     # --- headline
-    grade, _c, detail = quality(cp, None)
+    grade, _c, detail = quality(cp)
     SUMMARY.update(
+        n_raw=n_raw, n_slow_grouped=len(slow) if len(slow) >= 2 else 0,
         age=age, cond=cond, n_stand=n_stand, grade=grade, quality=detail, notes=notes,
-        rows=[(r[0], r[2]) for r in rows], assoc=[f"{k[0]}:{k[1]}" for k, _s in assoc_keys],
+        rows=[(r[0], r[2]) for r in rows], assoc=raw_keys,
         drowsy=drowsy,
         atyp_pctile=typ["atyp_pctile"] if typ else None,
         brain_pct=brain if data is not None else None,
@@ -398,17 +440,19 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
         n_oob=n_oob if panel else None, contents=[t for _p, t in contents])
     if age is None:
         head = "No age given, so nothing could be compared by age."
+    elif n_stand == 0 and grade == "Poor":
+        head = "Nothing stands out for this age, but recording quality is poor."
     elif n_stand == 0:
         head = "Nothing in this recording stands out for someone of this age."
     elif n_stand == 1:
         head = "One result stands out for someone of this age."
     else:
         head = f"{n_stand} results stand out for someone of this age."
-    box = "#f0f0f0" if age is None else "#fdf1f0" if n_stand else "#eef6ef"
+    box = "#f0f0f0" if age is None or (grade == "Poor" and not n_stand) else "#fdf1f0" if n_stand else "#eef6ef"
     fig.patches.append(plt.Rectangle((L, 0.846), R - L, 0.064, transform=fig.transFigure,
                                      facecolor=box, edgecolor="none"))
     fig.text(L + 0.015, 0.889, head, fontsize=12.5, weight="bold", color="#1a1a1a", va="center")
-    fig.text(L + 0.015, 0.862, _wrap(plain_quality(grade, detail), 112), fontsize=8.2, color="0.2", va="center")
+    fig.text(L + 0.015, 0.862, _wrap(plain_quality(grade, detail, brain), 112), fontsize=8.2, color="0.2", va="center")
 
     # --- at a glance
     y = 0.822
@@ -417,7 +461,9 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
              color="0.4", ha="right")
     y -= 0.014
     fig.lines.append(plt.Line2D([L, R], [y, y], transform=fig.transFigure, color="0.7", lw=0.6))
-    step = min(0.044, 0.385 / max(len(rows), 1))
+    LINE2 = 0.011
+    two = [len(_wrap(r[1], 104).split("\n")) > 1 for r in rows]
+    step = min(0.044, (0.385 - LINE2 * sum(two)) / max(len(rows), 1))
     y -= step * 0.42
     for name, txt, st, col, p in rows:
         fig.text(L, y + 0.007, name, fontsize=8.5, weight="bold", color="#1a1a1a", va="center")
@@ -434,13 +480,14 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
             xp = x0 + w * min(max(p, 0), 100) / 100
             fig.lines.append(plt.Line2D([xp, xp], [y - 0.008, y + 0.008], transform=fig.transFigure,
                                         color=col, lw=2.5))
-        y -= step
+        y -= step + (LINE2 if len(_wrap(txt, 104).split("\n")) > 1 else 0)
 
     # --- seen in association with
     y -= 0.012
     fig.text(L, y, "What these findings have been seen with", fontsize=11, weight="bold", color="#1a1a1a")
     y -= 0.018
-    shown = [(ASSOCIATIONS[k], s) for k, s in assoc_keys if k in ASSOCIATIONS]
+    shown = [(grouped if k == joined else ASSOCIATIONS[k], s) for k, s in assoc_keys
+             if k == joined or k in ASSOCIATIONS]
     others = len(assoc_keys) - len(shown)
     if age is None:
         fig.text(L, y, "Nothing could be compared without an age, so there is nothing to note here.",
@@ -508,7 +555,7 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
     import mne
     sm = edf_power.summary(cp)
     fig = plt.figure(figsize=(8.5, 11))
-    fig.text(0.06, 0.965, "EDF Analysis Report", fontsize=16, weight="bold")
+    fig.text(0.06, 0.965, "EEG Measures", fontsize=16, weight="bold")
     fig.text(0.06, 0.945, f"{label}", fontsize=9)
     fig.text(0.06, 0.930, f"Age {age if age is not None else 'unknown'}   "
              f"Condition {cond}   Recorded {rec or 'unknown'}   "
@@ -529,7 +576,7 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
         ax.set_ylim(0, 1)
         ax.autoscale(False)     # the percentile bar must not rescale the text
         if t[0] == "__quality__":
-            grade, col, detail = quality(cp, None)
+            grade, col, detail = quality(cp)
             for sp in ax.spines.values():
                 sp.set_color(col)
                 sp.set_linewidth(2)
@@ -612,8 +659,10 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
         findings = [(None, "All headline measures within the typical range for age "
                            f"(|z| < {Z_FLAG:.0f}).", "")]
     for z, s, ev in findings[:12]:
-        fig.text(0.07, y, "\u2022 " + s, fontsize=8, color=zcolor(z) if z is not None else "0.1")
-        y -= 0.016
+        for k_, ln_ in enumerate(_wrap(s, 112).split("\n")):
+            fig.text(0.07 if k_ == 0 else 0.082, y, ("\u2022 " if k_ == 0 else "") + ln_, fontsize=8,
+                     color=zcolor(z) if z is not None else "0.1")
+            y -= 0.016
         if ev:
             fig.text(0.085, y, ev, fontsize=6.5, color="0.35", style="italic")
             y -= 0.016
@@ -622,7 +671,7 @@ def page_edf(pdf, label, age, cond, rec, cp, models, notes):
         y -= 0.014
 
     fig.text(0.06, 0.035, _wrap(
-        "Reference: age-by-condition ranges fitted on one study per client of the STS QA corpus "
+        "Reference: age-by-condition ranges fitted on one study per client of our EEG screening database "
         f"({models.get('paf_post', {}).get('n', '?')} clients, {cond}) -- a population referred "
         "for EEG screening, not screened normals; z = 2 means unusual for that population at "
         "this age, not abnormal. Power from the raw EDF (median Welch, 4 s, no ICA). "
@@ -682,7 +731,7 @@ def _agree(zp, ze, sign):
     return ("panel only", "#b26a00") if fp else ("EDF only", "#b26a00")
 
 
-def page_panel(pdf, label, age, cond, panel, cp, models):
+def page_panel(pdf, label, age, cond, panel, cp, models, internal=False):
     import matplotlib.pyplot as plt
     from process.discriminant import compute_oob_counts, compute_scores, GROUP_INDEXES
     sm = edf_power.summary(cp)
@@ -694,10 +743,10 @@ def page_panel(pdf, label, age, cond, panel, cp, models):
     fig = plt.figure(figsize=(8.5, 11))
     fig.text(0.06, 0.965, "Brain Panel cross-check", fontsize=16, weight="bold")
     fig.text(0.06, 0.945, label, fontsize=9)
-    fig.text(0.06, 0.930, f"Production Brain Panel {panel.get('version') or ''}"
+    fig.text(0.06, 0.930, f"Brain Panel {panel.get('version') or ''}"
              f"{', dated ' + panel['date'] if panel.get('date') else ''}", fontsize=8.5)
-    fig.text(0.06, 0.916, "48 metrics as z against EC_191 -- an eyes-closed reference, not "
-             "age-adjusted", fontsize=8, color="0.35")
+    fig.text(0.06, 0.916, "48 measures as z against one adult eyes-closed reference, not "
+             "adjusted for age", fontsize=8, color="0.35")
 
     # --- out-of-range rows by group
     groups = [("std_global", "Std/Global"), ("pdr", "PDR"), ("phenotypes", "Phenotypes"),
@@ -760,12 +809,12 @@ def page_panel(pdf, label, age, cond, panel, cp, models):
         elif word.startswith(("both high", "both low")):
             notes.append(f"{title}: both analyses point {word.split()[1]} "
                          f"{'(one borderline) ' if 'borderline' in word else ''}"
-                         "-- two independent computations agree.")
+                         "-- two analyses of this recording agree.")
         elif word == "CONFLICT":
             notes.append(f"{title}: the two disagree in direction -- check recording quality and "
                          "condition before relying on either.")
     if cond == "EO":
-        notes.append("Eyes-open study: EC_191 is an eyes-closed reference, so the panel's PDR and "
+        notes.append("Eyes-open study: the panel's reference is eyes-closed, so the panel's PDR and "
                      "alpha rows are expected to read low.")
     y -= 0.006
     for n_ in notes:
@@ -774,28 +823,30 @@ def page_panel(pdf, label, age, cond, panel, cp, models):
             y -= 0.015
     y -= 0.03
 
-    # --- discriminant likelihoods
-    fig.text(0.06, y, "Panel discriminant likelihoods (Collura et al. 2026)", fontsize=10,
-             weight="bold")
-    y -= 0.024
-    for d in compute_scores(compute_oob_counts(np.nan_to_num(z, nan=0.0))):
-        fig.text(0.07, y, d["name"], fontsize=8)
-        fig.text(0.30, y, f"score {d['score']}", fontsize=8)
-        fig.text(0.40, y, d["label"], fontsize=8, weight="bold", color=d["color"])
-        qa = DISC_QA_AUC.get(d["name"])
-        if qa is not None:
-            fig.text(0.62, y, f"QA corpus AUC vs doctor: {qa:.2f}", fontsize=7, color="0.4")
-        y -= 0.017
-    for k, ln in enumerate(_wrap(
-            "Published sensitivities/specificities come from the paper's cohort. Applied unchanged "
-            "to the STS QA corpus (tools/panel_crosscheck.py), the discriminant scores did not track "
-            "the matched doctor's comments (AUC 0.33-0.55, 0.5 = chance); a model of the 48 panel "
-            "rows fitted to those comments reached 0.76 for PDR slowing and 0.58 for drowsiness. "
-            "Read the likelihoods as pattern summaries, not diagnostic probabilities.", 140).split("\n")):
-        fig.text(0.07, y - 0.006 - 0.012 * k, ln, fontsize=6.8, color="0.35")
+    # --- discriminant likelihoods: --internal only. They read High on about half of all reports,
+    # often against the cover, and did not track the doctor's comments here (AUC 0.33-0.55).
+    if internal:
+        fig.text(0.06, y, "Panel discriminant likelihoods (Collura et al. 2026)", fontsize=10,
+                 weight="bold")
+        y -= 0.024
+        for d in compute_scores(compute_oob_counts(np.nan_to_num(z, nan=0.0))):
+            fig.text(0.07, y, d["name"], fontsize=8)
+            fig.text(0.30, y, f"score {d['score']}", fontsize=8)
+            fig.text(0.40, y, d["label"], fontsize=8, weight="bold", color=d["color"])
+            qa = DISC_QA_AUC.get(d["name"])
+            if qa is not None:
+                fig.text(0.62, y, f"QA corpus AUC vs doctor: {qa:.2f}", fontsize=7, color="0.4")
+            y -= 0.017
+        for k, ln in enumerate(_wrap(
+                "Published sensitivities/specificities come from the paper's cohort. Applied unchanged "
+                "to the STS QA corpus (tools/panel_crosscheck.py), the discriminant scores did not track "
+                "the matched doctor's comments (AUC 0.33-0.55, 0.5 = chance); a model of the 48 panel "
+                "rows fitted to those comments reached 0.76 for PDR slowing and 0.58 for drowsiness. "
+                "Read the likelihoods as pattern summaries, not diagnostic probabilities.", 140).split("\n")):
+            fig.text(0.07, y - 0.006 - 0.012 * k, ln, fontsize=6.8, color="0.35")
     fig.text(0.06, 0.035, _wrap(
-        "Panel values are read from the production .icale.rep.pdf; nothing is recomputed. EDF values "
-        "are age-by-condition z from the QA-corpus reference (a screening population, not norms). "
+        "Panel values are read from the Brain Panel report; nothing is recomputed. EDF values "
+        "are age-by-condition z from our EEG screening database (a screening population, not norms). "
         "Screening information for a qualified practitioner; not a diagnosis.", 150),
         fontsize=6, color="0.35", va="bottom")
     stamp(fig)
@@ -823,6 +874,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--sidecar")
     ap.add_argument("--store", default=DEFAULT_STORE)
+    ap.add_argument("--internal", action="store_true",
+                    help="add the panel discriminant likelihoods to the cross-check page")
     ap.add_argument("--summary", help="also write what the cover said as JSON")
     ap.add_argument("--models", default=report_models.DEFAULT_PATH)
     ap.add_argument("--refit", action="store_true",
@@ -894,6 +947,9 @@ def main():
                                                                 client=patient_hash(a.edf)))
             except Exception as exc:  # no database / no reference: page without norms
                 print("coupling norms unavailable:", exc)
+    brain = brain_share(data)
+    if brain is not None and brain < BRAIN_MIN:     # too little left to compare, or to read as networks
+        typ = net = ctyp = None
     stats = tuple(bundle["group_stats"][cond]) if bundle else group_stats(a.store, cond)
     drowsy = None
     try:
@@ -911,7 +967,7 @@ def main():
         page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, ctyp, stats, contents, drowsy)
         page_edf(pdf, label, age, cond, rec, cp, models, notes)
         if panel:
-            page_panel(pdf, label, age, cond, panel, cp, models)
+            page_panel(pdf, label, age, cond, panel, cp, models, a.internal)
         if data is not None:
             ss.page_sources(data, pdf, typ)
             if net is not None:

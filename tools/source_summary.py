@@ -305,7 +305,7 @@ def page_sources(data, pdf, typ=None):
                     color="white", fontweight="bold")
         x += w
     ax.set_xlim(0, 100); ax.set_ylim(0, 1); ax.set_axis_off()
-    ax.text(0, 1.35, f"Brain sources {acc_pct:.0f}% of the recording ({len(acc)} components)",
+    ax.text(0, 1.35, f"Brain sources {acc_pct:.0f}% of the signal ({len(acc)} components)",
             fontsize=10, fontweight="bold", color="#1a1a1a", transform=ax.transData)
     rsites = ", ".join(sorted({c["site"] for c in rej}))
     ax.text(100, 1.35, f"Removed as artifact {rej_pct:.0f}% ({len(rej)}: {rsites})"
@@ -434,7 +434,7 @@ def page_sources(data, pdf, typ=None):
     fig.lines.append(plt.Line2D([0.03, 0.97], [0.098, 0.098], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
     peers_note = ("\nFor age: each source's lobe x side x band, regressed on age over one study per "
-                  "QA-corpus client -- a screening population, not norms. z = strength against others of "
+                  "client -- a screening population, not norms. z = strength against others of "
                   "that age\nwho have such a source; % = how many have one. Sources sharing a lobe, side "
                   "and band are judged together. A red ring on the map = unusual for age."
                   if typ else "")
@@ -680,7 +680,7 @@ def page_networks(data, pdf, net=None, ctyp=None):
         tname, tval = g["tmpl"]
         fig.patches.append(Rectangle((tx, y - 0.007), 0.006, 0.016, transform=fig.transFigure,
                                      facecolor=bcol[band]))
-        tail = f"   ({g['pct']:.0f}% of recording, mean r {g['mean_r']:+.2f})"
+        tail = f"   ({g['pct']:.0f}% of signal, mean r {g['mean_r']:+.2f})"
         fig.text(tx + 0.012, y, _clip(f"{band}:  {mem}", 8.3, wid - _width(tail, 8.3)) + tail,
                  fontsize=8.3, color="#111", va="center")
         y -= 0.020
@@ -744,7 +744,7 @@ def page_networks(data, pdf, net=None, ctyp=None):
     fig.lines.append(plt.Line2D([0.03, 0.97], [0.100, 0.100], transform=fig.transFigure,
                                 color="#ccc", lw=0.6))
     age_note = ("\nFor age: band strength is regressed on age and recording size (number of pairs, "
-                "threshold) over one study per QA-corpus client -- a screening population, not norms.\nA "
+                "threshold) over one study per client -- a screening population, not norms.\nA "
                 "link's % is how often that region pair links in that direction at this age; "
                 "red = under 1%."
                 if ctyp else "")
