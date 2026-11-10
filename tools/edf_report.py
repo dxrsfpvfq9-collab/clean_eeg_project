@@ -452,7 +452,9 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
     fig.patches.append(plt.Rectangle((L, 0.846), R - L, 0.064, transform=fig.transFigure,
                                      facecolor=box, edgecolor="none"))
     fig.text(L + 0.015, 0.889, head, fontsize=12.5, weight="bold", color="#1a1a1a", va="center")
-    fig.text(L + 0.015, 0.862, _wrap(plain_quality(grade, detail, brain), 112), fontsize=8.2, color="0.2", va="center")
+    q_txt = plain_quality(grade, detail, brain)
+    q_fs, q_w = (8.2, 112) if len(_wrap(q_txt, 112).split("\n")) <= 2 else (7.0, 150)   # keep it inside the box
+    fig.text(L + 0.015, 0.862, _wrap(q_txt, q_w), fontsize=q_fs, color="0.2", va="center")
 
     # --- at a glance
     y = 0.822
@@ -488,7 +490,6 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
     y -= 0.018
     shown = [(grouped if k == joined else ASSOCIATIONS[k], s) for k, s in assoc_keys
              if k == joined or k in ASSOCIATIONS]
-    others = len(assoc_keys) - len(shown)
     if age is None:
         fig.text(L, y, "Nothing could be compared without an age, so there is nothing to note here.",
                  fontsize=8, color="0.3")
@@ -509,12 +510,25 @@ def page_cover(pdf, label, age, cond, rec, cp, models, notes, panel, data, typ, 
             fig.text(L, y, ln, fontsize=7.4, color="0.2")
             y -= 0.0125
         y -= 0.004
-    extra = max(len(shown) - 4, 0) + others
-    if extra:
-        fig.text(L, y, f"+ {extra} more finding(s) with no well-described association, or not shown here; "
-                 "see the pages behind.", fontsize=7.2, color="0.4")
+    # findings with no association text are still named: "one result stands out" must say which
+    unnamed = [(f"{PLAIN[k[0]][0]}: {s[0].lower()}{s[1:]}" if k[0] in PLAIN else s)
+               for k, s in assoc_keys if not (k == joined or k in ASSOCIATIONS)]
+    if unnamed:
+        fig.text(L, y, "Also stands out" if shown else "What stands out", fontsize=8.2, weight="bold",
+                 color="#1a1a1a")
+        fig.text(R, y, "No well-described link to symptoms or conditions", fontsize=6.6, color="0.4",
+                 ha="right", style="italic")
         y -= 0.014
-    if assoc_keys:
+        for u in unnamed[:3]:
+            fig.text(L, y, "• " + u, fontsize=7.4, color="0.2")
+            y -= 0.0125
+        y -= 0.004
+    more = max(len(shown) - 4, 0) + max(len(unnamed) - 3, 0)
+    if more:
+        fig.text(L, y, f"+ {more} more finding(s) not shown here; see the pages behind.", fontsize=7.2,
+                 color="0.4")
+        y -= 0.014
+    if shown:
         fig.text(L, y, _wrap("These are patterns reported in groups of people. They also occur in people with no "
                  "symptoms, and they do not show that this person has any of these conditions.", 118),
                  fontsize=7.4, color="#8a4b00", va="top")
